@@ -23,7 +23,7 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from core.db import open_store
+from core.db import MemoryStore, open_store
 from core.extract import STATES
 from core.fields import VALID_FIELD, canonical_names, clean_requested, match_field
 
@@ -101,6 +101,8 @@ app.add_middleware(SlowAPIMiddleware)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 app.state.store = open_store(os.environ.get("DATABASE_URL"))
 app.state.quota = RequestQuota()
+if not os.environ.get("DATABASE_URL"):
+    logger.warning("DATABASE_URL is not set: serving an empty in-memory store, no real listings")
 
 
 def _is_htmx(request: Request) -> bool:
@@ -172,5 +174,7 @@ def health(request: Request, token: str = "") -> Response:
 
 @app.get("/healthz")
 @limiter.exempt
-def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+def healthz(request: Request) -> dict[str, str]:
+    # "memory" on a deployed site means DATABASE_URL is missing and searches show nothing.
+    store = request.app.state.store
+    return {"status": "ok", "database": "memory" if isinstance(store, MemoryStore) else "postgres"}

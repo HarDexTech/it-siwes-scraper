@@ -137,3 +137,8 @@ def test_web_sources_are_labelled_by_site(client):
     ))
     r = client.get("/search", params={"field": "CSC"}, headers=ip(9))
     assert "View on myjobmag.com" in r.text and "View on jobberman.com" in r.text
+
+
+def test_healthz_says_which_database(client):
+    # The fixture uses the in-memory store, as a deploy with no DATABASE_URL would.
+    assert client.get("/healthz").json() == {"status": "ok", "database": "memory"}
