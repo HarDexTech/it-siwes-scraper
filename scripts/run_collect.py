@@ -16,11 +16,12 @@ from _common import database_url, setup_logging, sources_config
 
 from collectors.jobboards import indeed_items
 from collectors.nairaland import NairalandCollector
-from collectors.queries import field_queries, general_queries, plan_fields
+from collectors.queries import field_queries, general_queries, plan_fields, seed_query
 from collectors.runner import run_pipeline
 from collectors.search import WebSearch
 from collectors.sites import fetch_text
 from collectors.telegram import telegram_items
+from core.companies import load_seeds
 from core.db import MemoryStore, PgStore
 from core.llm_client import LLMClient, MockLLMClient
 
@@ -53,6 +54,12 @@ def main() -> int:
     run_id = store.start_run("collect")
     search = WebSearch(max_results=cfg["search"]["results_per_query"])
     queries = [q for f in fields for q in field_queries(f)] + general_queries(datetime.now(timezone.utc).year)
+    # Seed companies (config/companies.yaml): kept in sync, a few searched each run.
+    for seed in load_seeds():
+        store.upsert_company(seed)
+    seeds = store.seeds_due(cfg["companies"]["seeds_per_run"])
+    queries += [seed_query(s.name) for s in seeds]
+    logger.info("seed companies this run: %s", [s.name for s in seeds])
 
     collectors = {
         "search": lambda: [item for q in queries for item in search.search(q)],
@@ -79,6 +86,7 @@ def main() -> int:
         )
         counts["search_queries"] = search.queries_used
         store.mark_requested_collected(served_requests)
+        store.mark_checked([s.id for s in seeds])
         status = "failed" if counts["errors"] and counts["collected"] == 0 else "ok"
         store.finish_run(run_id, status, counts, "; ".join(f"{k}: {v}" for k, v in counts["errors"].items()) or None)
     except Exception as exc:

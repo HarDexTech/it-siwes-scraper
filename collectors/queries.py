@@ -21,10 +21,17 @@ def field_queries(field: str) -> list[str]:
     terms = search_terms(field)
     return [
         f"SIWES {terms}",
-        f'"industrial training" {terms} students Nigeria',
+        # Pages listing companies that take students in this field (core/extract.to_companies).
+        f'("companies that accept" OR "places for" OR "list of companies") SIWES {terms}',
         f"{_TERMS} {terms} {_SOCIAL_SITES}",
         f"{_TERMS} {terms} {_JOB_SITES}",
     ]
+
+
+def seed_query(name: str) -> str:
+    """Checks one company from config/companies.yaml. "Nigeria", not "internship", keeps
+    out the company's global/US internship pages."""
+    return f'"{name}" (SIWES OR "industrial training" OR "IT students") Nigeria'
 
 
 def general_queries(year: int) -> list[str]:

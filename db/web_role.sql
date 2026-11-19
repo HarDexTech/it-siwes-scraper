@@ -4,3 +4,4 @@
 GRANT USAGE ON SCHEMA public TO siwes_web;
 GRANT SELECT ON placements, collector_runs TO siwes_web;
 GRANT SELECT, INSERT, UPDATE ON requested_fields TO siwes_web;
+GRANT SELECT ON companies TO siwes_web;

@@ -25,6 +25,17 @@ Background collectors ──► keyword filter ──► AI extraction ──►
 - **Scam warnings:** keyword rules plus the AI's own flag. Flagged posts are shown with a warning, not hidden.
 - **Expiry:** a listing expires when its deadline passes. A listing with no deadline expires 60 days after it was posted, or after it was first seen if the post date is unknown.
 - **Duplicates:** the same placement found on several sites becomes one card that links to every source.
+- **Companies you can apply to:** below the open placements, each search lists companies that take students in that field, even with no advert up. Ranking: an open placement now, then the chosen state, then the newest evidence.
+  - **Where companies come from:**
+    - every organization that advertised places
+    - "companies that accept SIWES students" pages: the AI names them, and code keeps a name only if it and a quote are really on the page
+    - `config/companies.yaml`, a seed list you can edit: 3 seeds are searched per run
+  - **What students see:**
+    - A company appears only with evidence: a page we collected.
+    - The label says what that page showed and when.
+    - Contacts come only from adverts, never from directory pages.
+    - Scam-flagged adverts don't count.
+- **State filter:** with a state chosen, listings in other states, or with no stated location, are shown under their own headings, not mixed in.
 
 ## Setup (local)
 
@@ -109,3 +120,7 @@ scripts/      run_collect.py, run_x.py, login_social.py, init_db.py, install_x_t
 **To add Telegram channels:** list them under `telegram.channels` in `config/sources.yaml`. Use the part of the link after `t.me/`; the channel has to be public.
 
 **To add a course or a short form students use:** edit `config/fields.yaml`.
+
+**To add a company to check:** add it to `config/companies.yaml` with its aliases and the courses it takes. It stays hidden until a run finds a page showing it takes SIWES/IT students.
+
+**To hide a bad listing:** `python scripts/reject_placement.py <id>`. This hides it for good and stops it counting as evidence for its company.

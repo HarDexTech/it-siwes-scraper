@@ -1,5 +1,6 @@
 import hashlib
 import re
+import unicodedata
 from datetime import date
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -24,10 +25,15 @@ def normalize_url(url: str) -> str:
     return urlunsplit(("https", host, path, query, ""))
 
 
+def fold_accents(text: str) -> str:
+    """"Nestlé" -> "Nestle", so accented and plain spellings match."""
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+
+
 def normalize_org(name: str | None) -> str:
     if not name:
         return ""
-    name = re.sub(r"[^a-z0-9 ]", " ", name.lower())
+    name = re.sub(r"[^a-z0-9 ]", " ", fold_accents(name).lower())
     return re.sub(r"\s+", " ", _ORG_NOISE.sub(" ", name)).strip()
 
 

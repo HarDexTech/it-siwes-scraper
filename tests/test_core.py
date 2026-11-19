@@ -166,6 +166,11 @@ class FakeLLM:
         return "```json\n" + json.dumps({"items": self.records}) + "\n```", "fake/model"
 
 
+def _extract(*args, **kwargs):
+    r = extract(*args, **kwargs)
+    return r.placements, r.processed, r.calls
+
+
 def _item(n, text="SIWES placement for Computer Science students", source="web"):
     return RawItem(source=source, url=f"https://site.com/{n}", title=f"post {n}", text=text)
 
@@ -184,7 +189,7 @@ def test_extract_validates_and_cleans():
         {"id": 7, "isPlacementListing": True, "title": "out of range id"},
         {"id": "bad"},
     ])
-    placements, processed, calls = extract([_item(0), _item(1)], llm, today=TODAY)
+    placements, processed, calls = _extract([_item(0), _item(1)], llm, today=TODAY)
     assert calls == 1 and len(processed) == 2
     [p] = placements
     assert p.state == "FCT"
@@ -204,7 +209,7 @@ def test_extract_drops_listing_with_nobody_to_apply_to():
     ])
     x_post = RawItem(source="x", url="https://x.com/ade/status/9", title="", text="Taking IT students",
                      author_handle="ade")
-    placements, processed, _ = extract([_item(0), x_post], llm, today=TODAY)
+    placements, processed, _ = _extract([_item(0), x_post], llm, today=TODAY)
     assert len(processed) == 2
     [p] = placements
     assert p.contact == "@ade on X"
@@ -227,7 +232,7 @@ def test_extract_drops_telegram_repost_and_aggregator_pages():
         RawItem(source="telegram", url="https://t.me/jobsregion/6", title="t.me/jobsregion", text="SIWES",
                 author_handle="jobsregion"),
     ]
-    placements, processed, _ = extract(items, llm, today=TODAY)
+    placements, processed, _ = _extract(items, llm, today=TODAY)
     assert len(processed) == 4
     [p] = placements
     assert p.organization == "Beta" and p.contact is None   # kept, but the channel isn't its contact
@@ -236,7 +241,7 @@ def test_extract_drops_telegram_repost_and_aggregator_pages():
 def test_extract_respects_call_cap_and_leaves_rest_unprocessed():
     llm = MockLLMClient()
     items = [_item(i) for i in range(12)]
-    placements, processed, calls = extract(items, llm, batch_size=5, max_calls=2, today=TODAY)
+    placements, processed, calls = _extract(items, llm, batch_size=5, max_calls=2, today=TODAY)
     assert calls == 2
     assert len(processed) == 10
 

@@ -7,9 +7,10 @@ handles and links are how students apply to these placements.
 import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from core.companies import company_from_placement
 from core.dedupe import normalize_url
 from core.extract import LLM, extract, passes_prefilter
 from core.schema import RawItem
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 # Sources whose pages are worth fetching. Social posts sit behind logins, so
 # their search snippet (or the scraped post text) is all we use.
 FETCH_SOURCES = {"web", "jobsite"}
+LAGOS = timezone(timedelta(hours=1))
 
 
 def run_pipeline(
@@ -69,14 +71,22 @@ def run_pipeline(
             for it in relevant
         ]
 
-    placements, processed, calls = extract(
+    today = today or datetime.now(LAGOS).date()
+    result = extract(
         relevant, llm, fields_hint=fields_hint, batch_size=batch_size, max_calls=max_llm_calls, today=today
     )
-    counts["llm_calls"] = calls
-    counts["placements"] = len(placements)
-    store.mark_seen([it.url for it in processed])
-    for placement in placements:
+    counts["llm_calls"] = result.calls
+    counts["placements"] = len(result.placements)
+    counts["left_for_next_run"] = result.left_over
+    store.mark_seen([it.url for it in result.processed])
+    for placement in result.placements:
         counts[store.upsert_placement(placement)] += 1
+    # Every named organization that advertised places is a company students can apply to later.
+    companies = [c for p in result.placements if (c := company_from_placement(p, today))] + result.companies
+    counts["companies_from_lists"] = len(result.companies)
+    for company in companies:
+        outcome = store.upsert_company(company)
+        counts[f"companies_{outcome}"] = counts.get(f"companies_{outcome}", 0) + 1
     counts["expired"] = store.expire()
     logger.info("pipeline done: %s", counts)
     return counts

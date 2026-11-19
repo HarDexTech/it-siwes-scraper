@@ -13,9 +13,10 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .companies import drop_evidence, keys, merge_company, should_merge
 from .dedupe import merge
 from .extract import is_expired
-from .schema import Placement
+from .schema import Company, Placement
 
 LAGOS = timezone(timedelta(hours=1))
 X_MIN_GAP = timedelta(hours=48)
@@ -43,6 +44,20 @@ def x_gate_decision(
         return True, None
     next_allowed = last_start + gap
     return forced or now >= next_allowed, next_allowed
+
+
+_COMPANY_COLUMNS = (
+    "name, name_key, aliases, fields, open_to_all, states, location, website, contact, how_to_apply, "
+    "evidence, origin, status"
+)
+_COMPANY_LOCK_KEY = 4_829_312  # serializes company merges, so two writers can't both insert
+
+
+def _company_values(c: Company) -> tuple[Any, ...]:
+    return (
+        c.name, c.name_key, c.aliases, c.fields, c.open_to_all, c.states, c.location, c.website, c.contact,
+        c.how_to_apply, json.dumps([e.model_dump(mode="json") for e in c.evidence]), c.origin, c.status,
+    )
 
 
 def _row_values(p: Placement) -> tuple[Any, ...]:
@@ -120,6 +135,68 @@ class PgStore:
             )
             return "merged"
 
+    def upsert_company(self, c: Company) -> str:
+        """Merge into a stored company only when ``should_merge`` agrees; else a new row."""
+        with self._pool.connection() as conn, conn.transaction():
+            conn.execute("SELECT pg_advisory_xact_lock(%s)", (_COMPANY_LOCK_KEY,))
+            ks = sorted(keys(c))
+            rows = conn.execute(
+                "SELECT * FROM companies WHERE name_key = ANY(%s) OR aliases && %s ORDER BY id FOR UPDATE",
+                (ks, ks),
+            ).fetchall()
+            candidates = [Company.model_validate(r) for r in rows]
+            target = next((e for e in candidates if should_merge(e, c, len(candidates))), None)
+            if target is None:
+                conn.execute(
+                    f"INSERT INTO companies ({_COMPANY_COLUMNS}) VALUES ({', '.join(['%s'] * 13)})",
+                    _company_values(c),
+                )
+                return "inserted"
+            merged = merge_company(target, c)
+            assignments = ", ".join(f"{col.strip()} = %s" for col in _COMPANY_COLUMNS.split(","))
+            conn.execute(
+                f"UPDATE companies SET {assignments}, updated_at = now() WHERE id = %s",
+                (*_company_values(merged), target.id),
+            )
+            return "merged"
+
+    def reject_placement(self, placement_id: int) -> bool:
+        """Hide a bad listing for good, and stop it counting as evidence for its company."""
+        with self._pool.connection() as conn, conn.transaction():
+            row = conn.execute(
+                "UPDATE placements SET status = 'rejected' WHERE id = %s RETURNING source_urls", (placement_id,)
+            ).fetchone()
+            if row is None:
+                return False
+            urls = row["source_urls"]
+            rows = conn.execute(
+                "SELECT * FROM companies WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(evidence) e "
+                "WHERE e->>'url' = ANY(%s)) FOR UPDATE",
+                (urls,),
+            ).fetchall()
+            for r in rows:
+                c = drop_evidence(Company.model_validate(r), set(urls))
+                conn.execute(
+                    "UPDATE companies SET evidence = %s, updated_at = now() WHERE id = %s",
+                    (json.dumps([e.model_dump(mode="json") for e in c.evidence]), c.id),
+                )
+            return True
+
+    def seeds_due(self, limit: int, older_than_days: int = 30) -> list[Company]:
+        with self._pool.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM companies WHERE origin = 'seed' AND status = 'active' "
+                "AND (last_checked_at IS NULL OR last_checked_at < now() - make_interval(days => %s)) "
+                "ORDER BY last_checked_at NULLS FIRST, id LIMIT %s",
+                (older_than_days, limit),
+            ).fetchall()
+        return [Company.model_validate(r) for r in rows]
+
+    def mark_checked(self, company_ids: list[int]) -> None:
+        if company_ids:
+            with self._pool.connection() as conn:
+                conn.execute("UPDATE companies SET last_checked_at = now() WHERE id = ANY(%s)", (company_ids,))
+
     def top_requested(self, limit: int = 10) -> list[str]:
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -196,6 +273,21 @@ class PgStore:
             ).fetchall()
         return [Placement.model_validate(r) for r in rows]
 
+    def companies_for(self, field: str, limit: int = 300) -> list[Company]:
+        with self._pool.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM companies WHERE status = 'active' AND jsonb_array_length(evidence) > 0 "
+                "AND (%s = ANY(fields) OR open_to_all) ORDER BY updated_at DESC LIMIT %s",
+                (field, limit),
+            ).fetchall()
+        return [Company.model_validate(r) for r in rows]
+
+    def open_placements(self) -> list[Placement]:
+        """Every open listing, to mark companies "open now" (small table: hundreds of rows)."""
+        with self._pool.connection() as conn:
+            rows = conn.execute("SELECT * FROM placements WHERE status = 'open'").fetchall()
+        return [Placement.model_validate(r) for r in rows]
+
     def request_field(self, name: str, canonical: bool) -> None:
         with self._pool.connection() as conn:
             conn.execute(
@@ -239,6 +331,7 @@ class MemoryStore:
         self.seen_urls: set[str] = set()
         self.requested: dict[str, dict[str, Any]] = {}
         self.runs: list[dict[str, Any]] = []
+        self.companies: list[Company] = []
 
     def close(self) -> None:
         pass
@@ -268,6 +361,39 @@ class MemoryStore:
                                      "last_seen_at": self._clock()})
             self.placements.append(p)
             return "inserted"
+
+    def upsert_company(self, c: Company) -> str:
+        with self._lock:
+            candidates = [e for e in self.companies if keys(e) & keys(c)]
+            target = next((e for e in candidates if should_merge(e, c, len(candidates))), None)
+            if target is None:
+                self.companies.append(c.model_copy(update={"id": len(self.companies) + 1}))
+                return "inserted"
+            i = self.companies.index(target)
+            self.companies[i] = merge_company(target, c)
+            return "merged"
+
+    def reject_placement(self, placement_id: int) -> bool:
+        with self._lock:
+            p = next((p for p in self.placements if p.id == placement_id), None)
+            if p is None:
+                return False
+            p.status = "rejected"
+            urls = {s.url for s in p.sources}
+            self.companies = [drop_evidence(c, urls) for c in self.companies]
+            return True
+
+    def seeds_due(self, limit: int, older_than_days: int = 30) -> list[Company]:
+        cutoff = self._clock() - timedelta(days=older_than_days)
+        due = [c for c in self.companies if c.origin == "seed" and c.status == "active"
+               and (c.last_checked_at is None or c.last_checked_at < cutoff)]
+        due.sort(key=lambda c: (c.last_checked_at is not None, c.last_checked_at or self._clock(), c.id))
+        return due[:limit]
+
+    def mark_checked(self, company_ids: list[int]) -> None:
+        for c in self.companies:
+            if c.id in company_ids:
+                c.last_checked_at = self._clock()
 
     def top_requested(self, limit: int = 10) -> list[str]:
         pending = [
@@ -325,6 +451,13 @@ class MemoryStore:
             -(p.posted_date or (p.first_seen_at or self._clock()).date()).toordinal(),
         ))
         return hits[:limit]
+
+    def companies_for(self, field: str, limit: int = 300) -> list[Company]:
+        return [c for c in self.companies if c.status == "active" and c.evidence
+                and (field in c.fields or c.open_to_all)][:limit]
+
+    def open_placements(self) -> list[Placement]:
+        return [p for p in self.placements if p.status == "open"]
 
     def request_field(self, name: str, canonical: bool) -> None:
         now = self._clock()

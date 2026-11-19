@@ -23,9 +23,11 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from core.companies import CompanyCard, rank_companies
 from core.db import MemoryStore, open_store
 from core.extract import STATES
 from core.fields import VALID_FIELD, canonical_names, clean_requested, match_field
+from core.schema import Placement
 
 load_dotenv()
 logger = logging.getLogger("app")
@@ -121,6 +123,18 @@ def _rate_limited(request: Request, exc: RateLimitExceeded) -> Response:
     return _message(request, "Too many searches, please wait a minute and try again.", 429)
 
 
+def group_by_state(results: list[Placement], state: str | None) -> list[tuple[str | None, list[Placement]]]:
+    """With a state chosen, label what isn't in it instead of mixing it in."""
+    if not state:
+        return [(None, results)]
+    groups = [
+        (f"In {state}", [p for p in results if p.state == state]),
+        ("Elsewhere in Nigeria", [p for p in results if p.state and p.state != state]),
+        ("Location not stated", [p for p in results if not p.state]),
+    ]
+    return [g for g in groups if g[1]]
+
+
 def _base_context() -> dict[str, Any]:
     return {
         "fields": canonical_names(),
@@ -147,6 +161,13 @@ def search(request: Request, field: str = "", state: str = "") -> HTMLResponse:
     store = request.app.state.store
     canonical = match_field(field)
     results = store.search(canonical, field, state or None)
+    companies: list[CompanyCard] = []
+    if canonical:
+        try:
+            companies = rank_companies(store.companies_for(canonical), store.open_placements(), state or None,
+                                       datetime.now(LAGOS).date())
+        except Exception:  # the companies section must never break the listings
+            logger.exception("companies section failed")
     queued = None
     if len(results) < MIN_RESULTS:
         name = canonical or clean_requested(field)
@@ -155,7 +176,8 @@ def search(request: Request, field: str = "", state: str = "") -> HTMLResponse:
         queued = name
 
     context = {**_base_context(), "field": field, "state": state, "canonical": canonical,
-               "results": results, "queued": queued}
+               "results": results, "groups": group_by_state(results, state or None),
+               "companies": companies, "queued": queued}
     template = "results.html" if _is_htmx(request) else "index.html"
     return TEMPLATES.TemplateResponse(request, template, context)
 

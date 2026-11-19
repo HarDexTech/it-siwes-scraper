@@ -37,11 +37,30 @@ class RawItem(BaseModel):
         return value
 
 
+class ExtractedCompany(BaseModel):
+    """One company named on a "companies that take SIWES students" page."""
+
+    name: str
+    location: str | None = None
+    state: str | None = None
+    fields: list[str] = Field(default_factory=list)
+    website: str | None = None
+    quote: str | None = None
+
+    @field_validator("fields", mode="before")
+    @classmethod
+    def _fields_list(cls, value: Any) -> Any:
+        return [] if value is None else [value] if isinstance(value, str) else value
+
+
 class Extracted(BaseModel):
     """What the LLM returns for one item. Field names match the prompt."""
 
     id: int
     isPlacementListing: bool = False
+    # listing | company_list | other. Optional so replies without it still validate.
+    pageType: str | None = None
+    companies: list[ExtractedCompany] = Field(default_factory=list)
     title: str | None = None
     organization: str | None = None
     location: str | None = None
@@ -105,3 +124,33 @@ class Placement(BaseModel):
     status: str = "open"
     first_seen_at: datetime | None = None
     last_seen_at: datetime | None = None
+
+
+class Evidence(BaseModel):
+    """Why we think a company takes SIWES/IT students: a page we actually collected."""
+
+    url: str
+    kind: str                      # listing (it advertised places) | directory (a SIWES company list named it)
+    page_date: date | None = None  # the page's own date; None = undated
+    seen_at: date                  # when we collected it
+    quote: str | None = None
+
+
+class Company(BaseModel):
+    """A company students can apply to, with or without an advert open right now."""
+
+    id: int | None = None
+    name: str
+    name_key: str
+    aliases: list[str] = Field(default_factory=list)   # normalized keys that mean the same company
+    fields: list[str] = Field(default_factory=list)
+    open_to_all: bool = False
+    states: list[str] = Field(default_factory=list)
+    location: str | None = None
+    website: str | None = None
+    contact: str | None = None        # only ever from a listing, never from a directory page
+    how_to_apply: str | None = None
+    evidence: list[Evidence] = Field(default_factory=list)
+    origin: str = "listing"           # listing | directory | seed
+    status: str = "active"            # active | hidden
+    last_checked_at: datetime | None = None

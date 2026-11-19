@@ -1,0 +1,46 @@
+# Companies to check for SIWES/IT places, even when they have no advert up.
+# A company here is NOT shown to students until a collector finds a real page showing it takes
+# SIWES/IT students (an advert, or a SIWES company list naming it). Three are searched per run,
+# each at most once every 30 days.
+#
+#   name:    the company's usual name
+#   aliases: other names posts use for it (matched after removing "Limited", "Nigeria", etc.)
+#   fields:  course names from config/fields.yaml it is known to take
+#   website: optional
+companies:
+  # --- Remote sensing / GIS / surveying -------------------------------------
+  - name: Sambus Geospatial
+    aliases: [Sambus Geospatial Nigeria, Sambus]
+    fields: [Remote Sensing and GIS, Surveying and Geoinformatics]
+
+  # --- Oil and gas ------------------------------------------------------------
+  - name: Chevron Nigeria
+    aliases: [Chevron, Chevron Nigeria Limited, CNL]
+    fields: [Petroleum Engineering, Chemical Engineering, Mechanical Engineering, Electrical Engineering,
+             Geology, Applied Geophysics, Computer Science, Remote Sensing and GIS, Environmental Science]
+  - name: Shell Nigeria
+    aliases: [Shell, SPDC, Shell Petroleum Development Company, SNEPCo]
+    fields: [Petroleum Engineering, Chemical Engineering, Mechanical Engineering, Electrical Engineering,
+             Geology, Applied Geophysics, Environmental Science]
+  - name: TotalEnergies EP Nigeria
+    aliases: [TotalEnergies, Total E&P Nigeria, TEPNG]
+    fields: [Petroleum Engineering, Chemical Engineering, Mechanical Engineering, Geology, Applied Geophysics]
+  - name: NNPC Limited
+    aliases: [NNPC, Nigerian National Petroleum Company]
+    fields: [Petroleum Engineering, Chemical Engineering, Mechanical Engineering, Electrical Engineering,
+             Geology, Applied Geophysics, Accounting, Computer Science]
+  - name: Seplat Energy
+    aliases: [Seplat, Seplat Petroleum]
+    fields: [Petroleum Engineering, Chemical Engineering, Geology, Applied Geophysics]
+  - name: Nigeria LNG
+    aliases: [NLNG, Nigeria LNG Limited]
+    fields: [Chemical Engineering, Mechanical Engineering, Electrical Engineering, Petroleum Engineering]
+  - name: ExxonMobil Nigeria
+    aliases: [ExxonMobil, Mobil Producing Nigeria]
+    fields: [Petroleum Engineering, Chemical Engineering, Mechanical Engineering, Geology]
+  - name: SLB
+    aliases: [Schlumberger, Schlumberger Nigeria]
+    fields: [Petroleum Engineering, Applied Geophysics, Geology, Mechanical Engineering, Electrical Engineering]
+  - name: Halliburton Nigeria
+    aliases: [Halliburton]
+    fields: [Petroleum Engineering, Mechanical Engineering, Chemical Engineering, Geology]

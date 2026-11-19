@@ -39,6 +39,26 @@ def source_for(url: str) -> str:
     return "web"
 
 
+_GOOGLE_REDIRECT = re.compile(r"^https?://(?:www\.)?google\.[a-z.]+/(?:goto|url)\?", re.IGNORECASE)
+
+
+def resolve_redirect(url: str, getter=None) -> str | None:
+    """Google sometimes hands back google.com/goto?url=<token> links. Follow them to the
+    real page so the card can name the site and dedupe works; None if that fails."""
+    if not _GOOGLE_REDIRECT.match(url):
+        return url
+    import httpx
+
+    get = getter or httpx.get
+    try:
+        response = get(url, follow_redirects=True, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        final = str(response.url)
+    except Exception:  # noqa: BLE001
+        logger.info("could not resolve %s", url[:80])
+        return None
+    return None if _GOOGLE_REDIRECT.match(final) or "google." in (urlsplit(final).hostname or "") else final
+
+
 def _parse_date(value: str | None, now: datetime) -> datetime | None:
     """Serper gives "3 days ago" or "Nov 2, 2026"."""
     if not value:
@@ -57,26 +77,36 @@ def _parse_date(value: str | None, now: datetime) -> datetime | None:
 
 
 class WebSearch:
-    def __init__(self, serper_key: str | None = None, max_results: int = 10, getter=None, ddgs_factory=None):
+    def __init__(self, serper_key: str | None = None, max_results: int = 10, getter=None, ddgs_factory=None,
+                 redirect_getter=None):
         self._serper_key = serper_key if serper_key is not None else os.environ.get("SERPER_API_KEY")
         self._max = max_results
         self._getter = getter
         self._ddgs_factory = ddgs_factory
+        self._redirect_getter = redirect_getter
         self.queries_used = 0
 
     def search(self, query: str) -> list[RawItem]:
         self.queries_used += 1
+        items: list[RawItem] = []
         if self._serper_key:
             try:
-                return self._serper(query)
+                items = self._serper(query)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("serper failed (%s); using ddgs for the rest of the run", exc)
                 self._serper_key = None
-        try:
-            return self._ddgs(query)
-        except Exception:
-            logger.warning("ddgs failed for %r", query, exc_info=True)
-            return []
+        if not self._serper_key:
+            try:
+                items = self._ddgs(query)
+            except Exception:
+                logger.warning("ddgs failed for %r", query, exc_info=True)
+        return [it for it in map(self._resolved, items) if it]
+
+    def _resolved(self, item: RawItem) -> RawItem | None:
+        url = resolve_redirect(item.url, self._redirect_getter)
+        if url is None:
+            return None
+        return item if url == item.url else item.model_copy(update={"url": url, "source": source_for(url)})
 
     def _serper(self, query: str) -> list[RawItem]:
         import httpx

@@ -10,6 +10,7 @@ For EVERY item return one object. Reply with JSON only: {"items": [ ... ]}. Each
   - job-board search or results pages, category or directory pages, and "N SIWES jobs in Lagos" lists that
     gather openings from many different organizations (the individual openings are collected separately)
   - news, advice articles, "how to get SIWES" guides, lists of companies that "accept SIWES students"
+    (those lists are pageType "company_list", see below)
   - people asking for a placement, or describing a placement or training they already finished
   - full-time or experienced jobs for graduates, NYSC-only posts
   - placements outside Nigeria, unless remote and open to students in Nigeria
@@ -29,5 +30,15 @@ For EVERY item return one object. Reply with JSON only: {"items": [ ... ]}. Each
   fee, OR paid training, such as enrolling in a course or buying a "SIWES package" or "student price" programme.
   Saying it is free, has no fee, or the fee is waived is NOT a scam, and a stipend paid TO students is fine.
 - summary: one neutral sentence describing the opportunity
+- pageType: "listing" if isPlacementListing is true; "company_list" if the item names companies or organizations
+  in Nigeria that take SIWES/IT students (a directory, "companies that accept SIWES students for Geology",
+  "places to do your IT in Lagos"); otherwise "other"
+- companies: only when pageType is "company_list", else []. At most 8 entries, those most relevant to fields_hint:
+  - name: exactly as written on the page
+  - location, state: as for the listing fields above, or null
+  - fields: canonical_fields the page itself says this company takes, else []. Do not infer from the company's industry.
+  - website: only if the page gives it, else null
+  - quote: up to 12 words copied exactly from the page, showing the company is on the list
+  Never include phone numbers or emails for these companies.
 
 Use only what the item says. Do not invent organizations, dates, links or contacts."""
