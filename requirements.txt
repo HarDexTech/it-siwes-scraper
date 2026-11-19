@@ -1,0 +1,8 @@
+-r requirements-web.txt
+openai
+httpx
+scrapling[fetchers]
+ddgs
+python-jobspy
+playwright
+pytest

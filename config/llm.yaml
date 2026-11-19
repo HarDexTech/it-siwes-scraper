@@ -1,0 +1,30 @@
+# Gemini first (free key from aistudio.google.com), NVIDIA NIM as fallback
+# (free key from build.nvidia.com). Both speak the OpenAI chat API.
+# Free-tier quotas change often - check the current numbers in AI Studio.
+default: gemini
+fallback: nim
+providers:
+  gemini:
+    base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
+    model: "gemini-flash-lite-latest"     # override with GEMINI_MODEL
+    model_env: GEMINI_MODEL
+    api_key_env: GEMINI_API_KEY
+    rpm: 10                               # stay under the free-tier per-minute limit
+    # A 429 from Gemini is usually the free quota; retrying just burns time,
+    # so go straight to the fallback provider.
+    fallback_on_429: true
+    reasoning_effort: low                 # keep thinking tokens off the quota
+    response_format: {type: json_object}
+  nim:
+    base_url: "https://integrate.api.nvidia.com/v1"
+    model: "nvidia/nemotron-3.5-super-vl-120b-a12b"   # override with NVIDIA_MODEL
+    model_env: NVIDIA_MODEL
+    api_key_env: NVIDIA_API_KEY
+    rpm: 35
+    extra_body:
+      chat_template_kwargs: {enable_thinking: false}
+batch_size: 5
+max_retries: 3
+temperature: 0
+max_tokens: 4096
+timeout_seconds: 60

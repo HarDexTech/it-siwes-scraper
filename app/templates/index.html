@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SIWES Placement Finder</title>
+  <meta name="description" content="Find open SIWES / IT placements in Nigeria for your course.">
+  <!-- Swap 4xx responses too, so rate-limit and input messages show in place. -->
+  <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[2345]..","swap":true,"error":false}]}'>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23047857'/><path d='M9 17l5 5 9-11' stroke='white' stroke-width='3.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <link rel="stylesheet" href="/static/app.css?v={{ css_version }}">
+  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+  <main class="mx-auto max-w-3xl px-4 py-8 sm:py-12">
+    <header class="mb-8">
+      <p class="text-sm font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">SIWES / IT placement</p>
+      <h1 class="mt-1 text-3xl font-bold sm:text-4xl">Find a placement for your course</h1>
+      <p class="mt-2 text-slate-600 dark:text-slate-400">
+        Open SIWES and industrial training placements collected from job sites, LinkedIn, X, Telegram and Nairaland.
+      </p>
+    </header>
+
+    <form action="/search" method="get" hx-get="/search" hx-target="#results" hx-push-url="true"
+          hx-indicator="#searching"
+          class="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[1fr_12rem_auto] dark:border-slate-800 dark:bg-slate-900">
+      <label class="grid gap-1 text-sm font-medium">
+        Your course / field
+        <input name="field" list="field-options" required maxlength="60" value="{{ field or '' }}"
+               placeholder="e.g. Computer Science, Remote Sensing"
+               class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-base font-normal outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20 dark:border-slate-700 dark:bg-slate-950">
+        <datalist id="field-options">
+          {% for f in fields %}<option value="{{ f }}">{% endfor %}
+        </datalist>
+      </label>
+      <label class="grid gap-1 text-sm font-medium">
+        State (optional)
+        <select name="state"
+                class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-base font-normal outline-none focus:border-emerald-600 dark:border-slate-700 dark:bg-slate-950">
+          <option value="">Any state</option>
+          {% for s in states %}<option value="{{ s }}" {% if s == state %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      <button type="submit"
+              class="self-end rounded-lg bg-emerald-700 px-5 py-2.5 font-semibold text-white hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-600/40">
+        Find IT Placement
+      </button>
+    </form>
+
+    <p id="searching" class="htmx-indicator mt-4 items-center gap-2 text-sm text-slate-500">Searching…</p>
+
+    <section id="results" class="mt-6" aria-live="polite">
+      {% if results is defined %}{% include "results.html" %}{% endif %}
+    </section>
+
+    <footer class="mt-12 border-t border-slate-200 pt-6 text-sm text-slate-500 dark:border-slate-800">
+      <p class="font-medium text-slate-700 dark:text-slate-300">Always verify with the company. Never pay for a SIWES placement.</p>
+      <p class="mt-1">Listings are summaries of public posts, with a link to the original. Placements with no deadline are hidden after 60 days.</p>
+      {% if contact_email %}<p class="mt-1">Want a listing removed? <a class="underline" href="mailto:{{ contact_email }}?subject=Remove%20listing">Email us</a>.</p>{% endif %}
+    </footer>
+  </main>
+</body>
+</html>

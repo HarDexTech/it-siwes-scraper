@@ -1,0 +1,69 @@
+{% set source_names = {"web": "Website", "jobsite": "Job site", "linkedin": "LinkedIn", "x": "X post",
+   "facebook": "Facebook", "instagram": "Instagram", "telegram": "Telegram", "nairaland": "Nairaland", "indeed": "Indeed"} %}
+<div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+  <h2 class="text-lg font-semibold">
+    {{ results|length }} open placement{{ "" if results|length == 1 else "s" }}
+    for {{ canonical or field }}{% if state %} · {{ state }} first{% endif %}
+  </h2>
+  {% if canonical and canonical|lower != field|lower %}
+    <p class="text-sm text-slate-500">Showing results for “{{ canonical }}”</p>
+  {% endif %}
+</div>
+
+{% if queued %}
+  <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+    We don't have many placements for <strong>{{ queued }}</strong> yet. We've added it to our next search, so check back soon.
+  </div>
+{% endif %}
+
+<ul class="grid gap-4">
+  {% for p in results %}
+  <li class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="flex flex-wrap items-start justify-between gap-2">
+      <div>
+        <h3 class="font-semibold">{{ p.title }}</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-400">
+          {{ p.organization or "Organization not stated" }}{% if p.location or p.state %} · {{ p.location or p.state }}{% endif %}
+        </p>
+      </div>
+      {% if p.deadline %}
+        {% set days = (p.deadline - today).days %}
+        <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{ 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200' if days <= 7 else 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' }}">
+          Deadline {{ p.deadline.strftime("%d %b") }}{% if days <= 7 %} ({{ days }} day{{ "" if days == 1 else "s" }} left){% endif %}
+        </span>
+      {% elif p.posted_date %}
+        <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">Posted {{ p.posted_date.strftime("%d %b") }} · verify before applying</span>
+      {% else %}
+        <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">No deadline stated · verify before applying</span>
+      {% endif %}
+    </div>
+
+    {% if p.scam_warning %}
+      <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-800 dark:bg-red-950 dark:text-red-200">
+        ⚠ This post mentions a payment or fee. Genuine SIWES placements don't charge students.
+      </p>
+    {% endif %}
+
+    {% if p.summary %}<p class="mt-3 text-sm">{{ p.summary }}</p>{% endif %}
+    {% if p.how_to_apply %}<p class="mt-2 text-sm"><span class="font-medium">How to apply:</span> {{ p.how_to_apply }}</p>{% endif %}
+    {% if p.contact %}<p class="mt-1 text-sm"><span class="font-medium">Contact:</span> {{ p.contact }}</p>{% endif %}
+    {% if p.open_to_all %}<p class="mt-1 text-xs text-slate-500">Open to all courses</p>{% endif %}
+
+    <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+      {% if p.apply_link %}
+        <a href="{{ p.apply_link }}" target="_blank" rel="noopener nofollow"
+           class="rounded-lg bg-emerald-700 px-3 py-1.5 font-semibold text-white hover:bg-emerald-800">Apply</a>
+      {% endif %}
+      {% for s in p.sources %}
+        <a href="{{ s.url }}" target="_blank" rel="noopener nofollow"
+           class="rounded-lg border border-slate-300 px-3 py-1.5 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">
+          View on {{ s.url|site_name if s.source in ("web", "jobsite") else source_names.get(s.source, s.source) }}
+        </a>
+      {% endfor %}
+      {% if contact_email %}
+        <a href="mailto:{{ contact_email }}?subject=Report%20listing%20{{ p.id }}" class="ml-auto text-xs text-slate-500 underline">Report</a>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>

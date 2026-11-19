@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+jinja2
+slowapi
+psycopg[binary]
+pydantic
+pyyaml
+python-dotenv
+rapidfuzz
+psycopg-pool

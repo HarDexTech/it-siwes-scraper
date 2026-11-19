@@ -1,0 +1,30 @@
+# Search budget per 6-hourly run (Serper: 2,500 free queries in total, one-time).
+search:
+  max_queries_per_run: 24
+  results_per_query: 10
+# LLM budget per run; each call extracts a batch of 5 items.
+llm:
+  max_calls_per_run: 25
+  batch_size: 5
+requested_fields_per_run: 10
+nairaland:
+  boards: [jobs, education, careers]
+  max_pages_per_board: 3
+  max_threads_per_board: 10
+  delay_seconds: 4
+indeed:
+  enabled: true
+  results_per_term: 15
+# Public channels readable at https://t.me/s/<name> without logging in.
+# Add channels that post SIWES/IT placements (the part after t.me/).
+telegram:
+  channels: []
+x:
+  max_queries: 8
+  max_scrolls: 3
+  delay_seconds: 4
+  general_queries:
+    - "\"SIWES placement\""
+    - "\"IT placement\" students"
+    - "\"industrial training\" students apply"
+    - "SIWES slots available"

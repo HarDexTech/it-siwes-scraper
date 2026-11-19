@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Collector Health</title>
+  <link rel="stylesheet" href="/static/app.css?v={{ css_version }}">
+</head>
+<body class="bg-slate-50 p-4 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+  <main class="mx-auto max-w-4xl space-y-8">
+    <h1 class="text-2xl font-bold">Collector health</h1>
+    <p>Open placements: <strong>{{ data.placements.open }}</strong> of {{ data.placements.total }} stored.</p>
+    <p>Next X run allowed:
+      <strong>{% if data.next_x_allowed %}{{ data.next_x_allowed.strftime("%a %d %b %Y %H:%M UTC") }}{% if data.next_x_allowed <= now %} (now){% endif %}{% else %}now (never run){% endif %}</strong>
+    </p>
+
+    <section>
+      <h2 class="mb-2 text-lg font-semibold">Last run per collector</h2>
+      <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead><tr class="border-b"><th class="py-1 pr-4">Collector</th><th class="pr-4">Started</th><th class="pr-4">Status</th><th class="pr-4">Counts</th><th>Error</th></tr></thead>
+        <tbody>
+        {% for r in data.runs %}
+          <tr class="border-b align-top">
+            <td class="py-1 pr-4 font-medium">{{ r.collector }}{% if r.forced %} (forced){% endif %}</td>
+            <td class="pr-4 whitespace-nowrap">{{ r.started_at.strftime("%d %b %H:%M") }}</td>
+            <td class="pr-4 {{ 'text-red-600' if r.status == 'failed' else '' }}">{{ r.status }}</td>
+            <td class="pr-4 text-xs">{% for k, v in r.counts.items() if k != 'errors' %}{{ k }}={{ v }} {% endfor %}</td>
+            <td class="text-xs text-red-600">{{ r.error or "" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="py-2 text-slate-500">No runs yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="mb-2 text-lg font-semibold">Most requested fields</h2>
+      <ul class="text-sm">
+        {% for r in data.requested %}
+          <li>{{ r.name }} — {{ r.request_count }} request{{ "" if r.request_count == 1 else "s" }}{% if r.last_collected_at %}, last collected {{ r.last_collected_at.strftime("%d %b") }}{% else %}, not collected yet{% endif %}</li>
+        {% else %}
+          <li class="text-slate-500">None yet.</li>
+        {% endfor %}
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
