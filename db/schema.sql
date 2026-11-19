@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS placements (
     sources       JSONB NOT NULL DEFAULT '[]',      -- [{source, url}, ...]
     source_urls   TEXT[] NOT NULL DEFAULT '{}',     -- normalized urls, for dedupe
     fingerprint   TEXT UNIQUE,                      -- org + state + deadline month
-    status        TEXT NOT NULL DEFAULT 'open',     -- open | expired
+    status        TEXT NOT NULL DEFAULT 'open',     -- open | expired | rejected (hidden by hand; never reopened)
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );

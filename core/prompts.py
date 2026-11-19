@@ -5,9 +5,15 @@ You get JSON: {"today": ..., "canonical_fields": [...], "fields_hint": [...], "i
 
 For EVERY item return one object. Reply with JSON only: {"items": [ ... ]}. Each object has:
 - id: the item's id, unchanged
-- isPlacementListing: true only if the item advertises placements/internships that students can apply to now or soon
-  (an organization taking SIWES/IT students, an internship for undergraduates). false for news, advice articles,
-  lists of "how to find SIWES", people asking for placements, full-time jobs for graduates, NYSC-only posts.
+- isPlacementListing: true only if ONE named organization (or one poster who can be contacted) is offering
+  SIWES/IT places or undergraduate internships that students can apply to now or soon. Set it false for:
+  - job-board search or results pages, category or directory pages, and "N SIWES jobs in Lagos" lists that
+    gather openings from many different organizations (the individual openings are collected separately)
+  - news, advice articles, "how to get SIWES" guides, lists of companies that "accept SIWES students"
+  - people asking for a placement, or describing a placement or training they already finished
+  - full-time or experienced jobs for graduates, NYSC-only posts
+  - placements outside Nigeria, unless remote and open to students in Nigeria
+  One company's own careers page with several roles, including SIWES/IT, counts as true.
 - title: short title, e.g. "SIWES placement for Geology students"
 - organization: the hiring organization's name, or null if not stated
 - location: city/area as written, or null
@@ -19,7 +25,9 @@ For EVERY item return one object. Reply with JSON only: {"items": [ ... ]}. Each
 - howToApply: one or two sentences on how to apply, or null
 - contact: email, phone/WhatsApp number or social handle to contact, exactly as written, or null
 - applyLink: application URL if one is given, else null
-- scamWarning: true if students are asked to pay any fee (acceptance, registration, form, processing) or money
+- scamWarning: true if students must pay anything to take part: an acceptance, registration, form or processing
+  fee, OR paid training, such as enrolling in a course or buying a "SIWES package" or "student price" programme.
+  Saying it is free, has no fee, or the fee is waived is NOT a scam, and a stipend paid TO students is fine.
 - summary: one neutral sentence describing the opportunity
 
 Use only what the item says. Do not invent organizations, dates, links or contacts."""

@@ -55,6 +55,12 @@ def test_clean_requested_rejects_junk():
         "Interested students should make payment to account number: 0123456789",
         "Form fee 2k only",
         "pay ngn 10000 before resumption",
+        "Training fee covers logbook support",
+        "Tuition: 50k",
+        "Course cost N30,000 for SIWES students",
+        "Enrol now: SIWES training N25k",
+        "N15,000 for the training, limited slots",
+        "Buy our SIWES package today",
     ],
 )
 def test_scam_flagged(text):
@@ -65,8 +71,20 @@ def test_scam_flagged(text):
     "text",
     [
         "Monthly stipend of N30,000 for IT students",
+        "During the training, students get a stipend of N30,000",
+        "Transport allowance of N20,000 for training",
         "SIWES students in Computer Science should send CV to hr@example.com",
         "No fees required. Apply via the link.",
+        "No registration fee. Apply via the link.",
+        # Honest posts saying what they DON'T charge must not get a scam badge.
+        "No training fee required",
+        "Free training, no course fee",
+        "course fee waived",
+        "Training fee: none",
+        "We do not charge any training fee",
+        "Training fees are fully sponsored",
+        "Never pay a training fee to anyone",
+        "Tuition-free programme",
     ],
 )
 def test_scam_not_flagged(text):
@@ -175,6 +193,44 @@ def test_extract_validates_and_cleans():
     assert p.apply_link is None                       # non-http link dropped
     assert p.scam_warning                             # rule-based, even though the LLM said no
     assert p.sources[0].url == "https://site.com/0"
+
+
+def test_extract_drops_listing_with_nobody_to_apply_to():
+    # A results page the model wrongly kept: no organization, no contact. A social
+    # post with no organization is kept, because the poster's handle is the contact.
+    llm = FakeLLM([
+        {"id": 0, "isPlacementListing": True, "title": "SIWES jobs in Lagos (477)", "organization": None},
+        {"id": 1, "isPlacementListing": True, "title": "Taking IT students, DM me", "organization": None},
+    ])
+    x_post = RawItem(source="x", url="https://x.com/ade/status/9", title="", text="Taking IT students",
+                     author_handle="ade")
+    placements, processed, _ = extract([_item(0), x_post], llm, today=TODAY)
+    assert len(processed) == 2
+    [p] = placements
+    assert p.contact == "@ade on X"
+
+
+def test_extract_drops_telegram_repost_and_aggregator_pages():
+    # A channel reposting a roundup is not a contact; a results page is dropped even
+    # when the model names the job board as the organization.
+    llm = FakeLLM([
+        {"id": 0, "isPlacementListing": True, "title": "50 companies taking SIWES students", "organization": None},
+        {"id": 1, "isPlacementListing": True, "title": "SIWES jobs in Lagos", "organization": "Indeed"},
+        {"id": 2, "isPlacementListing": True, "title": "IT jobs", "organization": "Acme"},
+        {"id": 3, "isPlacementListing": True, "title": "IT at Beta", "organization": "Beta"},
+    ])
+    items = [
+        RawItem(source="telegram", url="https://t.me/jobsregion/5", title="t.me/jobsregion", text="SIWES",
+                author_handle="jobsregion"),
+        RawItem(source="web", url="https://ng.indeed.com/jobs?q=siwes", title="", text="SIWES"),
+        RawItem(source="web", url="https://ng.indeed.com/q-siwes-l-lagos-jobs.html", title="", text="SIWES"),
+        RawItem(source="telegram", url="https://t.me/jobsregion/6", title="t.me/jobsregion", text="SIWES",
+                author_handle="jobsregion"),
+    ]
+    placements, processed, _ = extract(items, llm, today=TODAY)
+    assert len(processed) == 4
+    [p] = placements
+    assert p.organization == "Beta" and p.contact is None   # kept, but the channel isn't its contact
 
 
 def test_extract_respects_call_cap_and_leaves_rest_unprocessed():

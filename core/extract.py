@@ -28,6 +28,20 @@ STATES = {
     "Kebbi", "Kogi", "Kwara", "Lagos", "Nasarawa", "Niger", "Ogun", "Ondo", "Osun", "Oyo", "Plateau",
     "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara", "FCT",
 }
+# Search-results and directory pages: they list other organizations' openings,
+# which are collected one by one instead. Dropped whatever the model says.
+_AGGREGATOR_URL = re.compile(
+    r"indeed\.com/(?:q-|jobs\?)|siwesfinder\.|treehousejobs\.ng/jobs/siwes"
+    r"|myjobmag\.com/(?:search|jobs-by-|jobs-in-)|jobberman\.com/jobs\?",
+    re.IGNORECASE,
+)
+_AGGREGATOR_ORGS = {
+    "indeed", "jobberman", "myjobmag", "hotnigerianjobs", "hot nigerian jobs", "ngcareers", "siwes finder",
+    "siwesfinder", "treehouse jobs", "treehousejobs", "linkedin",
+}
+# Sources where the post's author is the one offering the place. A Telegram
+# channel usually reposts someone else's listing, so its name isn't a contact.
+_POSTER_IS_CONTACT = {"x", "nairaland"}
 
 
 class LLM(Protocol):
@@ -72,9 +86,14 @@ def to_placement(item: RawItem, ext: Extracted, today: date) -> Placement | None
     # A deadline more than a year out, or before the post itself, is a model misread.
     if deadline and (deadline > today + timedelta(days=365) or (posted and deadline < posted)):
         deadline = None
+    if _AGGREGATOR_URL.search(item.url) or (ext.organization or "").strip().lower() in _AGGREGATOR_ORGS:
+        return None
     contact = ext.contact
-    if not contact and item.author_handle:
+    if not contact and item.author_handle and item.source in _POSTER_IS_CONTACT:
         contact = f"@{item.author_handle} on {item.source.upper() if item.source == 'x' else item.source}"
+    if not ext.organization and not contact:
+        # Nobody to apply to: a results page or a repost that slipped past the prompt.
+        return None
     state = _normalize_state(ext.state)
     title = (ext.title or item.title or "IT placement").strip()[:200]
     return Placement(

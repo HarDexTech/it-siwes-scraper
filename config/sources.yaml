@@ -17,8 +17,18 @@ indeed:
   results_per_term: 15
 # Public channels readable at https://t.me/s/<name> without logging in.
 # Add channels that post SIWES/IT placements (the part after t.me/).
+# Checked 2026-11-19: public preview works and the channel posted recently.
+# Only posts that pass the keyword filter reach the AI, so busy job channels cost little.
 telegram:
-  channels: []
+  channels:
+    - crownfitsmartcity    # SIWES-focused (seasonal)
+    - tohire_ng            # corporate SIWES placements + entry-level jobs
+    - scholarshipregion    # multinational SIWES portals (Shell, TotalEnergies, NNPC)
+    - jobsregion
+    - grantsandjobsupdate
+    - jbtoday
+    - jobnetworkng
+    - careermattersng
 x:
   max_queries: 8
   max_scrolls: 3
