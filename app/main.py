@@ -160,7 +160,11 @@ def search(request: Request, field: str = "", state: str = "") -> HTMLResponse:
 
     store = request.app.state.store
     canonical = match_field(field)
-    results = store.search(canonical, field, state or None)
+    found = store.search(canonical, field, state or None)
+    # "Open to any course" listings would otherwise flood every field's results (an Apple
+    # programme under GIS). They get their own section, after the field's own listings.
+    results = [p for p in found if not canonical or canonical in p.fields]
+    any_course = [p for p in found if canonical and canonical not in p.fields]
     companies: list[CompanyCard] = []
     if canonical:
         try:
@@ -177,6 +181,8 @@ def search(request: Request, field: str = "", state: str = "") -> HTMLResponse:
 
     context = {**_base_context(), "field": field, "state": state, "canonical": canonical,
                "results": results, "groups": group_by_state(results, state or None),
+               "any_course": group_by_state(any_course, state or None) if any_course else [],
+               "any_course_count": len(any_course),
                "companies": companies, "queued": queued}
     template = "results.html" if _is_htmx(request) else "index.html"
     return TEMPLATES.TemplateResponse(request, template, context)

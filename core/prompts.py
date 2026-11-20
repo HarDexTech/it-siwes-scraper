@@ -13,14 +13,16 @@ For EVERY item return one object. Reply with JSON only: {"items": [ ... ]}. Each
     (those lists are pageType "company_list", see below)
   - people asking for a placement, or describing a placement or training they already finished
   - full-time or experienced jobs for graduates, NYSC-only posts
-  - placements outside Nigeria, unless remote and open to students in Nigeria
+  - placements outside Nigeria, and international or global programmes (e.g. a foreign company's internship
+    with relocation). Remote roles count only if the post says they are open to students in Nigeria.
+    If the item doesn't show the place is in Nigeria or open to Nigerian students, set false.
   One company's own careers page with several roles, including SIWES/IT, counts as true.
 - title: short title, e.g. "SIWES placement for Geology students"
 - organization: the hiring organization's name, or null if not stated
 - location: city/area as written, or null
 - state: the Nigerian state (one of the 36 states or "FCT"), or null. "Abuja" -> "FCT". Remote -> null.
 - fields: the disciplines it accepts, using ONLY names from canonical_fields. Empty list if none stated.
-- openToAllFields: true if it accepts students from any course/discipline
+- openToAllFields: true only if the item says any course or discipline can apply. Not just because no course is named.
 - deadline: application deadline as YYYY-MM-DD, or null. Never guess a deadline.
 - postedDate: when it was posted, YYYY-MM-DD, or null (use posted_at if given)
 - howToApply: one or two sentences on how to apply, or null

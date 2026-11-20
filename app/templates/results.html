@@ -78,6 +78,20 @@
   </ul>
 {% endfor %}
 
+{% if any_course %}
+<details class="mt-8 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+  <summary class="cursor-pointer font-semibold">
+    {{ any_course_count }} more open to any course <span class="font-normal text-slate-500">(not specific to {{ canonical }})</span>
+  </summary>
+  {% for label, items in any_course %}
+    {% if label %}<h3 class="mb-2 mt-4 text-sm font-semibold uppercase tracking-wide text-slate-500">{{ label }} ({{ items|length }})</h3>{% endif %}
+    <ul class="mt-3 grid gap-4">
+      {% for p in items %}{{ placement_card(p) }}{% endfor %}
+    </ul>
+  {% endfor %}
+</details>
+{% endif %}
+
 {% if canonical %}
 <section class="mt-10" aria-labelledby="companies-heading">
   <h2 id="companies-heading" class="text-lg font-semibold">Companies that take {{ canonical }} students</h2>

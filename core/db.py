@@ -125,6 +125,8 @@ class PgStore:
                     _row_values(p),
                 )
                 return "inserted"
+            if row["status"] == "rejected":
+                return "rejected"   # hidden by hand: a fresh copy must not bring it (or its company) back
             merged = merge(Placement.model_validate(row), p)
             # Keep the stored fingerprint unless it had none, so the unique index can't clash.
             merged.fingerprint = row["fingerprint"] or p.fingerprint
@@ -276,8 +278,9 @@ class PgStore:
     def companies_for(self, field: str, limit: int = 300) -> list[Company]:
         with self._pool.connection() as conn:
             rows = conn.execute(
+                # Field-tagged only: an "open to any course" advert says nothing about GIS work.
                 "SELECT * FROM companies WHERE status = 'active' AND jsonb_array_length(evidence) > 0 "
-                "AND (%s = ANY(fields) OR open_to_all) ORDER BY updated_at DESC LIMIT %s",
+                "AND %s = ANY(fields) ORDER BY updated_at DESC LIMIT %s",
                 (field, limit),
             ).fetchall()
         return [Company.model_validate(r) for r in rows]
@@ -352,6 +355,8 @@ class MemoryStore:
                 if urls & {s.url for s in existing.sources} or (
                     p.fingerprint and existing.fingerprint == p.fingerprint
                 ):
+                    if existing.status == "rejected":
+                        return "rejected"
                     merged = merge(existing, p)
                     merged.fingerprint = existing.fingerprint or p.fingerprint
                     merged.last_seen_at = self._clock()
@@ -453,8 +458,7 @@ class MemoryStore:
         return hits[:limit]
 
     def companies_for(self, field: str, limit: int = 300) -> list[Company]:
-        return [c for c in self.companies if c.status == "active" and c.evidence
-                and (field in c.fields or c.open_to_all)][:limit]
+        return [c for c in self.companies if c.status == "active" and c.evidence and field in c.fields][:limit]
 
     def open_placements(self) -> list[Placement]:
         return [p for p in self.placements if p.status == "open"]

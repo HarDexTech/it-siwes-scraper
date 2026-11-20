@@ -79,10 +79,14 @@ def run_pipeline(
     counts["placements"] = len(result.placements)
     counts["left_for_next_run"] = result.left_over
     store.mark_seen([it.url for it in result.processed])
+    kept: list = []
     for placement in result.placements:
-        counts[store.upsert_placement(placement)] += 1
+        outcome = store.upsert_placement(placement)
+        counts[outcome] = counts.get(outcome, 0) + 1
+        if outcome != "rejected":
+            kept.append(placement)
     # Every named organization that advertised places is a company students can apply to later.
-    companies = [c for p in result.placements if (c := company_from_placement(p, today))] + result.companies
+    companies = [c for p in kept if (c := company_from_placement(p, today))] + result.companies
     counts["companies_from_lists"] = len(result.companies)
     for company in companies:
         outcome = store.upsert_company(company)

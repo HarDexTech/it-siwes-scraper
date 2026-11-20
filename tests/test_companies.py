@@ -283,3 +283,30 @@ def test_companies_failure_does_not_break_listings(client, monkeypatch):
 
 def test_web_role_can_read_companies():
     assert "GRANT SELECT ON companies TO siwes_web" in (ROOT / "db" / "web_role.sql").read_text("utf-8")
+
+
+# --- fixes after the first live GIS search -------------------------------------
+def test_any_course_listings_are_kept_apart_from_the_field(client):
+    store = client.app.state.store
+    store.upsert_placement(Placement(title="Apple-style programme", organization="Big Co", open_to_all=True,
+                                     fields=[], sources=[SourceLink(source="telegram", url="https://t.me/x/1")]))
+    store.upsert_company(Company(name="Big Co", name_key="big", open_to_all=True, fields=[], evidence=[
+        Evidence(url="https://t.me/x/1", kind="listing", page_date=TODAY, seen_at=TODAY)]))
+    html = _get(client, field="GIS").text
+    field_part, rest = html.split("more open to any course")
+    assert "Apple-style programme" not in field_part and "Apple-style programme" in rest
+    assert "Big Co" not in html.split("Companies that take")[1]
+
+
+def test_rejected_listing_found_again_does_not_come_back():
+    from collectors.runner import run_pipeline
+
+    store = MemoryStore()
+    store.upsert_placement(_placement("Edall Systems", url="https://fb.example/edall"))
+    store.reject_placement(store.placements[0].id)
+    llm = FakeLLM([{"id": 0, "isPlacementListing": True, "title": "GIS Intern", "organization": "Edall Systems",
+                    "fields": ["Remote Sensing and GIS"]}])
+    item = RawItem(source="facebook", url="https://fb.example/edall", title="GIS intern", text="SIWES GIS intern")
+    counts = run_pipeline(store, llm, {"t": lambda: [item]}, today=TODAY)
+    assert counts.get("rejected") == 1 and store.placements[0].status == "rejected"
+    assert store.companies == []
