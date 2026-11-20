@@ -31,6 +31,7 @@ class RawItem(BaseModel):
     # "discovery" = found while looking for companies in a field + state (directories, company
     # pages, SIWES reports): skips the SIWES keyword filter and the seen-url skip.
     purpose: str = "listing"
+    target_field: str | None = None   # discovery: the course this page was searched for
 
     @field_validator("source")
     @classmethod

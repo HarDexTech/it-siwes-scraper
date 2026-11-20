@@ -462,3 +462,32 @@ def test_rotation_starts_with_the_first_state():
 
     first = rotation_pairs(["Lagos", "FCT"], set(), 3)
     assert [s for _, s in first] == ["Lagos"] * 3
+
+# --- after the first discovery run --------------------------------------------------
+def _one_company_reply(page_type, name, quote, fields=("Remote Sensing and GIS",)):
+    return FakeLLM([{"id": 0, "pageType": page_type, "companies": [
+        {"name": name, "fields": list(fields), "quote": quote}]}])
+
+
+def test_company_pages_from_outside_nigeria_are_dropped():
+    us_firm = RawItem(source="web", purpose="discovery", url="https://arco.example/geospatial",
+                      text="ARCO Worldwide offers geospatial remote sensing and GIS services across the Rivers region.")
+    ghana = RawItem(source="web", purpose="discovery", url="https://linkedin.example/posts/kstu-siwes",
+                    text="My industrial training at Ejisu Government Hospital, Kumasi, Ghana.")
+    assert extract([us_firm], _one_company_reply("company_profile", "ARCO Worldwide",
+                   "ARCO Worldwide offers geospatial remote sensing and GIS services"), today=TODAY).companies == []
+    assert extract([ghana], _one_company_reply("siwes_report", "Ejisu Government Hospital",
+                   "industrial training at Ejisu Government Hospital", ["Medical Laboratory Science"]),
+                   today=TODAY).companies == []
+
+
+def test_profile_only_claims_the_course_it_was_found_for():
+    grl = RawItem(source="web", purpose="discovery", target_field="Remote Sensing and GIS",
+                  url="https://esri.example/partners/grl",
+                  text="Geospatial Research Ltd, Ikeja Lagos: GIS, remote sensing, surveying and Computer Science "
+                       "software development.")
+    llm = _one_company_reply("company_profile", "Geospatial Research Ltd",
+                             "Geospatial Research Ltd, Ikeja Lagos: GIS, remote sensing",
+                             ["Remote Sensing and GIS", "Computer Science"])
+    [c] = extract([grl], llm, today=TODAY).companies
+    assert c.fields == ["Remote Sensing and GIS"]

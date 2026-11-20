@@ -87,7 +87,7 @@ def main() -> int:
         collectors["indeed"] = lambda: indeed_items(terms, cfg["indeed"]["results_per_term"])
     if pairs:
         collectors["discovery"] = lambda: [
-            item.model_copy(update={"purpose": "discovery"})
+            item.model_copy(update={"purpose": "discovery", "target_field": pair[0]})
             for pair in pairs for q in discovery_queries(*pair) for item in search.search(q, recent=False)
         ]
 

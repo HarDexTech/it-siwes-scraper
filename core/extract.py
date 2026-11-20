@@ -190,6 +190,18 @@ def _named_fields(page: str) -> set[str]:
     }
 
 
+def _in_nigeria(page: str) -> bool:
+    """The (normalized) page names Nigeria, a Nigerian state, or a Nigerian city."""
+    words = f" {page} "
+    return " nigeria " in words or " nigerian " in words or any(f" {p} " in words for p in _NIGERIA_MARKERS)
+
+
+# Place names that are also everyday English, or places abroad, don't count as a sign of Nigeria.
+_AMBIGUOUS_PLACES = {"rivers", "delta", "plateau", "maryland", "marina", "bonny", "aba", "ede", "owo", "iwo",
+                     "ifo", "saki", "epe", "offa", "jos", "imo", "edo"}
+_NIGERIA_MARKERS = [p for p in _PLACES if p not in _AMBIGUOUS_PLACES]
+
+
 def _own_domain(domain: str, key: str) -> bool:
     """geoinfotech.ng for "Geoinfotech Resources": a name word of 4+ letters is in the domain."""
     host = domain.split(".")[0] if domain else ""
@@ -209,6 +221,11 @@ def to_companies(item: RawItem, ext: Extracted, today: date) -> list[Company]:
     # ("...SIWES_REPORT_..._AT_THE_NIGERIAN_INSTITUTE_OF_...") is still the site's own words.
     seen_text = f"{item.url}\n{item.title}\n{item.text[:MAX_TEXT_CHARS]}"
     page, page_org = norm_text(seen_text), normalize_org(seen_text)
+    # Company pages and reports come from open web searches: a Ghanaian hospital's report or a
+    # US firm's page reads the same. The page itself must place it in Nigeria.
+    if kind in ("profile", "report") and not _in_nigeria(page):
+        logger.info("dropping %s page with no sign of Nigeria: %s", ext.pageType, item.url)
+        return []
     named = _named_fields(page)
     page_date = ext.postedDate or (item.posted_at.date() if item.posted_at else None)
     if page_date and page_date > today:
@@ -230,10 +247,15 @@ def to_companies(item: RawItem, ext: Extracted, today: date) -> list[Company]:
         if not website and ext.pageType == "company_profile" and _own_domain(page_domain, key):
             website = f"https://{page_domain}"   # we're on the company's own site
         state = _normalize_state(c.state) or state_from_text(c.location)
+        fields = set(c.fields) & named
+        if kind == "profile" and item.target_field:
+            # "Does the work" is only claimed for the course this page was found for: a GIS
+            # firm's page mentioning software shouldn't make it a Computer Science company.
+            fields &= {item.target_field}
         out.append(Company(
             name=c.name.strip()[:120],
             name_key=key,
-            fields=sorted(set(c.fields) & named),
+            fields=sorted(fields),
             states=[state] if state else [],
             location=c.location,
             website=website,

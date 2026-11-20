@@ -44,7 +44,10 @@ For EVERY item return one object. Reply with JSON only: {"items": [ ... ]}. Each
     saying what it does
   - "other": anything else
 - companies: for company_list, siwes_report, business_directory and company_profile pages, else [].
-  Only organizations in Nigeria. At most 12 entries, those most relevant to fields_hint:
+  Only organizations in Nigeria that employ people and could host a student (companies, firms, agencies,
+  hospitals, labs, ministries). Not schools, colleges or training centres that merely teach the course,
+  and not entries that are obviously not a real local business. At most 12 entries, those most relevant to
+  fields_hint:
   - name: exactly as written on the page
   - location, state: as for the listing fields above, or null
   - fields: canonical_fields the page itself says this company takes students for or works in
