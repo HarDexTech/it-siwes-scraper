@@ -28,6 +28,33 @@ def field_queries(field: str) -> list[str]:
     ]
 
 
+_DIRECTORIES = "(site:finelib.com OR site:connectnigeria.com OR site:vconnect.com OR site:esri.com)"
+
+
+def discovery_queries(field: str, state: str) -> list[str]:
+    """Companies doing this field's work in this state, and SIWES reports naming where students
+    trained. Run without the recent-only date filter (these pages are old by nature)."""
+    terms = search_terms(field)
+    return [
+        f"{terms} (company OR firm OR consultants OR services) {state} Nigeria",
+        f"{terms} {state} {_DIRECTORIES}",
+        f'(SIWES OR "industrial training") ("technical report" OR report) {terms} {state}',
+    ]
+
+
+def rotation_pairs(states: list[str], recent: set[tuple[str, str]], limit: int) -> list[tuple[str, str]]:
+    """When no student searches are waiting: every course, one state at a time (the first
+    state, usually Lagos, gets all courses before the next), skipping pairs done recently."""
+    out: list[tuple[str, str]] = []
+    for state in states:
+        for field in load_fields():
+            if len(out) >= limit:
+                return out
+            if (field, state) not in recent:
+                out.append((field, state))
+    return out
+
+
 def seed_query(name: str) -> str:
     """Checks one company from config/companies.yaml. "Nigeria", not "internship", keeps
     out the company's global/US internship pages."""

@@ -28,6 +28,9 @@ class RawItem(BaseModel):
     posted_at: datetime | None = None
     author_handle: str | None = None
     query: str = ""
+    # "discovery" = found while looking for companies in a field + state (directories, company
+    # pages, SIWES reports): skips the SIWES keyword filter and the seen-url skip.
+    purpose: str = "listing"
 
     @field_validator("source")
     @classmethod
@@ -130,7 +133,9 @@ class Evidence(BaseModel):
     """Why we think a company takes SIWES/IT students: a page we actually collected."""
 
     url: str
-    kind: str                      # listing (it advertised places) | directory (a SIWES company list named it)
+    # listing: it advertised places | directory: a list of companies that take students named it
+    # report: a student's SIWES/IT report names it | profile: a page shows it does the field's work
+    kind: str
     page_date: date | None = None  # the page's own date; None = undated
     seen_at: date                  # when we collected it
     quote: str | None = None

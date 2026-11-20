@@ -16,7 +16,9 @@ from _common import database_url, setup_logging, sources_config
 
 from collectors.jobboards import indeed_items
 from collectors.nairaland import NairalandCollector
-from collectors.queries import field_queries, general_queries, plan_fields, seed_query
+from collectors.queries import (
+    discovery_queries, field_queries, general_queries, plan_fields, rotation_pairs, seed_query,
+)
 from collectors.runner import run_pipeline
 from collectors.search import WebSearch
 from collectors.sites import fetch_text
@@ -60,6 +62,14 @@ def main() -> int:
     seeds = store.seeds_due(cfg["companies"]["seeds_per_run"])
     queries += [seed_query(s.name) for s in seeds]
     logger.info("seed companies this run: %s", [s.name for s in seeds])
+    # Company discovery: course + state pairs students searched first, then a rotation through
+    # every course for the big states, each pair at most every discovery_days.
+    comp = cfg["companies"]
+    pairs = store.pairs_due(comp["discovery_pairs_per_run"], comp["discovery_days"])
+    if len(pairs) < comp["discovery_pairs_per_run"]:
+        recent = store.recently_discovered(comp["discovery_days"]) | set(pairs)
+        pairs += rotation_pairs(comp["rotation_states"], recent, comp["discovery_pairs_per_run"] - len(pairs))
+    logger.info("company discovery this run: %s", pairs)
 
     collectors = {
         "search": lambda: [item for q in queries for item in search.search(q)],
@@ -75,18 +85,27 @@ def main() -> int:
     if cfg["indeed"]["enabled"]:
         terms = ["SIWES", "industrial training"] + [f"intern {f}" for f in fields[:3]]
         collectors["indeed"] = lambda: indeed_items(terms, cfg["indeed"]["results_per_term"])
+    if pairs:
+        collectors["discovery"] = lambda: [
+            item.model_copy(update={"purpose": "discovery"})
+            for pair in pairs for q in discovery_queries(*pair) for item in search.search(q, recent=False)
+        ]
 
     try:
         counts = run_pipeline(
             store, llm, collectors,
             fetch_text=fetch_text,
-            fields_hint=fields,
+            fields_hint=list(dict.fromkeys([f for f, _ in pairs] + fields)),
             max_llm_calls=cfg["llm"]["max_calls_per_run"],
             batch_size=cfg["llm"]["batch_size"],
         )
         counts["search_queries"] = search.queries_used
         store.mark_requested_collected(served_requests)
         store.mark_checked([s.id for s in seeds])
+        if "discovery" not in counts["errors"]:
+            for pair in pairs:
+                store.mark_pair_discovered(*pair)
+        counts["discovery_pairs"] = [" in ".join(p) for p in pairs]
         status = "failed" if counts["errors"] and counts["collected"] == 0 else "ok"
         store.finish_run(run_id, status, counts, "; ".join(f"{k}: {v}" for k, v in counts["errors"].items()) or None)
     except Exception as exc:

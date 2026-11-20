@@ -48,17 +48,24 @@ def run_pipeline(
         counts["collected"] += len(found)
         for item in found:
             url = normalize_url(item.url)
-            if url not in items:
+            if url not in items or item.purpose == "discovery":
                 items[url] = item.model_copy(update={"url": url})
 
-    seen = store.seen(list(items))
-    fresh = [it for url, it in items.items() if url not in seen]
+    # Discovery pages (company directories, company sites, SIWES reports) never mention
+    # SIWES the way adverts do, and one page can serve several fields, so they skip both
+    # the seen-url skip and the keyword filter; each (field, state) is searched at most every 90 days.
+    def discovery(it: RawItem) -> bool:
+        return it.purpose == "discovery"
+
+    seen = store.seen([u for u, it in items.items() if not discovery(it)])
+    fresh = [it for url, it in items.items() if discovery(it) or url not in seen]
     counts["new"] = len(fresh)
 
-    relevant = [it for it in fresh if passes_prefilter(it)]
-    irrelevant = [it.url for it in fresh if not passes_prefilter(it)]
+    relevant = [it for it in fresh if discovery(it) or passes_prefilter(it)]
+    irrelevant = [it.url for it in fresh if not discovery(it) and not passes_prefilter(it)]
     counts["prefiltered"] = len(relevant)
     store.mark_seen(irrelevant)
+    relevant.sort(key=lambda it: not discovery(it))   # first, so the LLM call cap can't starve them
 
     if fetch_text:
         to_fetch = [it for it in relevant if it.source in FETCH_SOURCES]
@@ -78,7 +85,7 @@ def run_pipeline(
     counts["llm_calls"] = result.calls
     counts["placements"] = len(result.placements)
     counts["left_for_next_run"] = result.left_over
-    store.mark_seen([it.url for it in result.processed])
+    store.mark_seen([it.url for it in result.processed if not discovery(it)])
     kept: list = []
     for placement in result.placements:
         outcome = store.upsert_placement(placement)

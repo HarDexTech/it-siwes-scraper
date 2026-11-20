@@ -171,8 +171,15 @@ def to_placement(item: RawItem, ext: Extracted, today: date) -> Placement | None
     )
 
 
-MAX_COMPANIES_PER_PAGE = 8
+MAX_COMPANIES_PER_PAGE = 12
 _MAX_QUOTE_WORDS = 20
+# What each kind of page proves about the companies it names.
+_PAGE_EVIDENCE = {
+    "company_list": "directory",        # says these companies take SIWES/IT students or interns
+    "siwes_report": "report",           # a student trained there
+    "business_directory": "profile",    # firms in a trade, nothing about students
+    "company_profile": "profile",       # one company's own page or directory entry
+}
 
 
 def _named_fields(page: str) -> set[str]:
@@ -183,15 +190,24 @@ def _named_fields(page: str) -> set[str]:
     }
 
 
+def _own_domain(domain: str, key: str) -> bool:
+    """geoinfotech.ng for "Geoinfotech Resources": a name word of 4+ letters is in the domain."""
+    host = domain.split(".")[0] if domain else ""
+    return any(len(word) >= 4 and word in host for word in key.split())
+
+
 def to_companies(item: RawItem, ext: Extracted, today: date) -> list[Company]:
     """Companies named on a SIWES company-list page, checked against the page text.
 
     The model's answer is only trusted where the page backs it: the name and the
     quote must be on the page, and a field only counts if the page names it.
     """
-    if ext.pageType != "company_list" or ext.isPlacementListing:
+    kind = _PAGE_EVIDENCE.get(ext.pageType or "")
+    if kind is None or ext.isPlacementListing:
         return []
-    seen_text = f"{item.title}\n{item.text[:MAX_TEXT_CHARS]}"   # exactly what the model was shown
+    # Exactly what the model was shown. The address counts too: a blocked page's slug
+    # ("...SIWES_REPORT_..._AT_THE_NIGERIAN_INSTITUTE_OF_...") is still the site's own words.
+    seen_text = f"{item.url}\n{item.title}\n{item.text[:MAX_TEXT_CHARS]}"
     page, page_org = norm_text(seen_text), normalize_org(seen_text)
     named = _named_fields(page)
     page_date = ext.postedDate or (item.posted_at.date() if item.posted_at else None)
@@ -208,8 +224,11 @@ def to_companies(item: RawItem, ext: Extracted, today: date) -> list[Company]:
         if key in _AGGREGATOR_ORGS:   # a job board listed as if it were an employer
             continue
         website = c.website if c.website and c.website.startswith("http") else None
-        if website and site_domain(website) == site_domain(item.url):
+        page_domain = site_domain(item.url)
+        if website and site_domain(website) == page_domain and not _own_domain(page_domain, key):
             website = None   # the directory's own link, not the company's
+        if not website and ext.pageType == "company_profile" and _own_domain(page_domain, key):
+            website = f"https://{page_domain}"   # we're on the company's own site
         state = _normalize_state(c.state) or state_from_text(c.location)
         out.append(Company(
             name=c.name.strip()[:120],
@@ -218,7 +237,7 @@ def to_companies(item: RawItem, ext: Extracted, today: date) -> list[Company]:
             states=[state] if state else [],
             location=c.location,
             website=website,
-            evidence=[Evidence(url=item.url, kind="directory", page_date=page_date, seen_at=today,
+            evidence=[Evidence(url=item.url, kind=kind, page_date=page_date, seen_at=today,
                                quote=c.quote.strip()[:200])],
             origin="directory",
         ))

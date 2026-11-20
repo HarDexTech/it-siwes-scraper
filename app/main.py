@@ -135,6 +135,24 @@ def group_by_state(results: list[Placement], state: str | None) -> list[tuple[st
     return [g for g in groups if g[1]]
 
 
+_TIER_TITLES = {
+    1: "Open now",
+    2: "Have taken SIWES/IT students",
+    3: "Do this work, no SIWES record found: ask them",
+}
+
+
+def company_tiers(cards: list[CompanyCard], state: str | None) -> list[dict[str, Any]]:
+    """Companies by tier; with a state chosen, the ones elsewhere are tucked away per tier."""
+    tiers = []
+    for tier, title in _TIER_TITLES.items():
+        in_tier = [k for k in cards if k.tier == tier]
+        if in_tier:
+            here = [k for k in in_tier if not state or k.in_state]
+            tiers.append({"title": title, "here": here, "elsewhere": [k for k in in_tier if k not in here]})
+    return tiers
+
+
 def _base_context() -> dict[str, Any]:
     return {
         "fields": canonical_names(),
@@ -169,9 +187,15 @@ def search(request: Request, field: str = "", state: str = "") -> HTMLResponse:
     if canonical:
         try:
             companies = rank_companies(store.companies_for(canonical), store.open_placements(), state or None,
-                                       datetime.now(LAGOS).date())
+                                       datetime.now(LAGOS).date(), field=canonical)
         except Exception:  # the companies section must never break the listings
             logger.exception("companies section failed")
+        # Queue this course + state for company discovery, under the same per-visitor limits.
+        if state and request.app.state.quota.allow(client_ip(request), f"{canonical} in {state}"):
+            try:
+                store.request_pair(canonical, state)
+            except Exception:
+                logger.exception("could not record requested pair")
     queued = None
     if len(results) < MIN_RESULTS:
         name = canonical or clean_requested(field)
@@ -183,7 +207,7 @@ def search(request: Request, field: str = "", state: str = "") -> HTMLResponse:
                "results": results, "groups": group_by_state(results, state or None),
                "any_course": group_by_state(any_course, state or None) if any_course else [],
                "any_course_count": len(any_course),
-               "companies": companies, "queued": queued}
+               "company_tiers": company_tiers(companies, state or None), "companies": companies, "queued": queued}
     template = "results.html" if _is_htmx(request) else "index.html"
     return TEMPLATES.TemplateResponse(request, template, context)
 

@@ -26,10 +26,21 @@ Background collectors ──► keyword filter ──► AI extraction ──►
 - **Expiry:** a listing expires when its deadline passes. A listing with no deadline expires 60 days after it was posted, or after it was first seen if the post date is unknown.
 - **Duplicates:** the same placement found on several sites becomes one card that links to every source.
 - **Companies you can apply to:** below the open placements, each search lists companies that take students in that field, even with no advert up. Ranking: an open placement now, then the chosen state, then the newest evidence.
+  - **Tiers:**
+    1. Open now
+    2. Has taken SIWES/IT students: an advert, a "companies that take students" list, or a student's SIWES report
+    3. Does the field's work in that state, with no SIWES record found yet: "ask before you go"
   - **Where companies come from:**
     - every organization that advertised places
-    - "companies that accept SIWES students" pages: the AI names them, and code keeps a name only if it and a quote are really on the page
-    - `config/companies.yaml`, a seed list you can edit: 3 seeds are searched per run
+    - pages the AI reads where code confirms the name and a quote are really on the page (or in its address):
+      - lists of companies that take students
+      - business directories (Finelib, ConnectNigeria, Esri partners)
+      - company websites
+      - student SIWES reports (Scribd, Studocu, ResearchGate)
+    - `config/companies.yaml`, an optional seed list you can edit: 1 seed is searched per run. Seeds get no ranking boost and stay hidden until a page proves them.
+  - **Discovery:** each run looks into 2 course + state pairs, with 3 searches each and no date limit, and repeats a pair at most every 90 days.
+    - Pairs students searched go first.
+    - Otherwise it rotates through every course for Lagos, FCT, Rivers, Oyo, Ogun, Kaduna, Enugu and Kano, in that order (`rotation_states` in `config/sources.yaml`).
   - **What students see:**
     - A company appears only with evidence: a page we collected.
     - The label says what that page showed and when.

@@ -78,3 +78,14 @@ CREATE TABLE IF NOT EXISTS companies (
 CREATE INDEX IF NOT EXISTS companies_key_idx ON companies (name_key);
 CREATE INDEX IF NOT EXISTS companies_aliases_idx ON companies USING GIN (aliases);
 CREATE INDEX IF NOT EXISTS companies_fields_idx ON companies USING GIN (fields);
+
+-- Course + state pairs students searched; the collector looks for companies for one pair a run.
+CREATE TABLE IF NOT EXISTS requested_pairs (
+    field              TEXT NOT NULL,
+    state              TEXT NOT NULL,
+    request_count      INTEGER NOT NULL DEFAULT 1,
+    first_requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_requested_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_discovered_at TIMESTAMPTZ,
+    PRIMARY KEY (field, state)
+);

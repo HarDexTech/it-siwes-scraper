@@ -291,6 +291,42 @@ class PgStore:
             rows = conn.execute("SELECT * FROM placements WHERE status = 'open'").fetchall()
         return [Placement.model_validate(r) for r in rows]
 
+    def request_pair(self, field: str, state: str) -> None:
+        with self._pool.connection() as conn:
+            conn.execute(
+                "INSERT INTO requested_pairs (field, state) VALUES (%s, %s) ON CONFLICT (field, state) DO UPDATE "
+                "SET request_count = requested_pairs.request_count + 1, last_requested_at = now()",
+                (field, state),
+            )
+
+    def pairs_due(self, limit: int = 1, older_than_days: int = 90) -> list[tuple[str, str]]:
+        """Student-searched (field, state) pairs not looked into for ``older_than_days``, most searched first."""
+        with self._pool.connection() as conn:
+            rows = conn.execute(
+                "SELECT field, state FROM requested_pairs WHERE request_count > 0 AND (last_discovered_at IS NULL "
+                "OR last_discovered_at < now() - make_interval(days => %s)) "
+                "ORDER BY last_discovered_at NULLS FIRST, request_count DESC, first_requested_at LIMIT %s",
+                (older_than_days, limit),
+            ).fetchall()
+        return [(r["field"], r["state"]) for r in rows]
+
+    def recently_discovered(self, within_days: int = 90) -> set[tuple[str, str]]:
+        with self._pool.connection() as conn:
+            rows = conn.execute(
+                "SELECT field, state FROM requested_pairs "
+                "WHERE last_discovered_at >= now() - make_interval(days => %s)", (within_days,),
+            ).fetchall()
+        return {(r["field"], r["state"]) for r in rows}
+
+    def mark_pair_discovered(self, field: str, state: str) -> None:
+        # Upsert: rotation pairs nobody searched yet get a row with request_count 0.
+        with self._pool.connection() as conn:
+            conn.execute(
+                "INSERT INTO requested_pairs (field, state, request_count, last_discovered_at) "
+                "VALUES (%s, %s, 0, now()) ON CONFLICT (field, state) DO UPDATE SET last_discovered_at = now()",
+                (field, state),
+            )
+
     def request_field(self, name: str, canonical: bool) -> None:
         with self._pool.connection() as conn:
             conn.execute(
@@ -335,6 +371,7 @@ class MemoryStore:
         self.requested: dict[str, dict[str, Any]] = {}
         self.runs: list[dict[str, Any]] = []
         self.companies: list[Company] = []
+        self.pairs: dict[tuple[str, str], dict[str, Any]] = {}
 
     def close(self) -> None:
         pass
@@ -462,6 +499,31 @@ class MemoryStore:
 
     def open_placements(self) -> list[Placement]:
         return [p for p in self.placements if p.status == "open"]
+
+    def request_pair(self, field: str, state: str) -> None:
+        now = self._clock()
+        row = self.pairs.setdefault((field, state), {"request_count": 0, "first_requested_at": now,
+                                                     "last_discovered_at": None})
+        row["request_count"] += 1
+        row["last_requested_at"] = now
+
+    def pairs_due(self, limit: int = 1, older_than_days: int = 90) -> list[tuple[str, str]]:
+        cutoff = self._clock() - timedelta(days=older_than_days)
+        due = [(k, r) for k, r in self.pairs.items() if r["request_count"] > 0
+               and (r["last_discovered_at"] is None or r["last_discovered_at"] < cutoff)]
+        due.sort(key=lambda kr: (kr[1]["last_discovered_at"] is not None, -kr[1]["request_count"],
+                                 kr[1]["first_requested_at"]))
+        return [k for k, _ in due[:limit]]
+
+    def recently_discovered(self, within_days: int = 90) -> set[tuple[str, str]]:
+        cutoff = self._clock() - timedelta(days=within_days)
+        return {k for k, r in self.pairs.items() if r["last_discovered_at"] and r["last_discovered_at"] >= cutoff}
+
+    def mark_pair_discovered(self, field: str, state: str) -> None:
+        now = self._clock()
+        row = self.pairs.setdefault((field, state), {"request_count": 0, "first_requested_at": now,
+                                                     "last_requested_at": now, "last_discovered_at": None})
+        row["last_discovered_at"] = now
 
     def request_field(self, name: str, canonical: bool) -> None:
         now = self._clock()

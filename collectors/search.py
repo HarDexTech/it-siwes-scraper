@@ -86,18 +86,20 @@ class WebSearch:
         self._redirect_getter = redirect_getter
         self.queries_used = 0
 
-    def search(self, query: str) -> list[RawItem]:
+    def search(self, query: str, *, recent: bool = True) -> list[RawItem]:
+        """``recent`` limits results to the last few months: right for adverts, wrong for
+        company sites, business directories and old SIWES reports."""
         self.queries_used += 1
         items: list[RawItem] = []
         if self._serper_key:
             try:
-                items = self._serper(query)
+                items = self._serper(query, recent)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("serper failed (%s); using ddgs for the rest of the run", exc)
                 self._serper_key = None
         if not self._serper_key:
             try:
-                items = self._ddgs(query)
+                items = self._ddgs(query, recent)
             except Exception:
                 logger.warning("ddgs failed for %r", query, exc_info=True)
         return [it for it in map(self._resolved, items) if it]
@@ -108,14 +110,14 @@ class WebSearch:
             return None
         return item if url == item.url else item.model_copy(update={"url": url, "source": source_for(url)})
 
-    def _serper(self, query: str) -> list[RawItem]:
+    def _serper(self, query: str, recent: bool = True) -> list[RawItem]:
         import httpx
 
         post = self._getter or httpx.post
         response = post(
             _SERPER_URL,
             headers={"X-API-KEY": self._serper_key, "Content-Type": "application/json"},
-            json={"q": query, "gl": "ng", "hl": "en", "num": self._max, "tbs": "qdr:m3"},
+            json={"q": query, "gl": "ng", "hl": "en", "num": self._max, **({"tbs": "qdr:m3"} if recent else {})},
             timeout=20,
         )
         response.raise_for_status()
@@ -133,14 +135,14 @@ class WebSearch:
             if r.get("link")
         ]
 
-    def _ddgs(self, query: str) -> list[RawItem]:
+    def _ddgs(self, query: str, recent: bool = True) -> list[RawItem]:
         if self._ddgs_factory:
             client = self._ddgs_factory()
         else:
             from ddgs import DDGS
 
             client = DDGS()
-        results = client.text(query, region="ng-en", timelimit="m", max_results=self._max) or []
+        results = client.text(query, region="ng-en", timelimit="m" if recent else None, max_results=self._max) or []
         return [
             RawItem(source=source_for(r["href"]), url=r["href"], title=r.get("title", ""),
                     text=r.get("body", ""), query=query)

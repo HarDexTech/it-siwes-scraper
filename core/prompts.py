@@ -32,15 +32,28 @@ For EVERY item return one object. Reply with JSON only: {"items": [ ... ]}. Each
   fee, OR paid training, such as enrolling in a course or buying a "SIWES package" or "student price" programme.
   Saying it is free, has no fee, or the fee is waived is NOT a scam, and a stipend paid TO students is fine.
 - summary: one neutral sentence describing the opportunity
-- pageType: "listing" if isPlacementListing is true; "company_list" if the item names companies or organizations
-  in Nigeria that take SIWES/IT students (a directory, "companies that accept SIWES students for Geology",
-  "places to do your IT in Lagos"); otherwise "other"
-- companies: only when pageType is "company_list", else []. At most 8 entries, those most relevant to fields_hint:
+- pageType, one of:
+  - "listing": isPlacementListing is true
+  - "company_list": names companies or organizations in Nigeria said to take SIWES/IT students or interns
+    ("companies that accept SIWES students for Geology", "places to do your IT in Lagos")
+  - "siwes_report": a student's SIWES/IT technical report, logbook or write-up naming the organization where
+    they did their industrial training
+  - "business_directory": a business directory or category page listing companies in a trade or field
+    ("Mapping / GIS companies in Lagos", "land surveyors in Ikeja"), saying nothing about students
+  - "company_profile": a page about one company (its own website, its directory entry, its LinkedIn page)
+    saying what it does
+  - "other": anything else
+- companies: for company_list, siwes_report, business_directory and company_profile pages, else [].
+  Only organizations in Nigeria. At most 12 entries, those most relevant to fields_hint:
   - name: exactly as written on the page
   - location, state: as for the listing fields above, or null
-  - fields: canonical_fields the page itself says this company takes, else []. Do not infer from the company's industry.
+  - fields: canonical_fields the page itself says this company takes students for or works in
+    (e.g. a firm offering GIS mapping and land surveying -> "Remote Sensing and GIS",
+    "Surveying and Geoinformatics"). Not guessed from the company's name alone. Else [].
   - website: only if the page gives it, else null
-  - quote: up to 12 words copied exactly from the page, showing the company is on the list
+  - quote: up to 12 words copied exactly from the page that show the company and what the page says about it
+    (for siwes_report, the words naming where the student trained)
   Never include phone numbers or emails for these companies.
+  For siwes_report pages, postedDate is the report's date or year (YYYY-01-01 if only the year is given).
 
 Use only what the item says. Do not invent organizations, dates, links or contacts."""

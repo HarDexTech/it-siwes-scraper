@@ -267,7 +267,7 @@ def test_search_labels_listings_outside_the_chosen_state(client):
 
 def test_search_shows_companies_section(client):
     html = _get(client, field="GIS").text
-    assert "Companies that take Remote Sensing and GIS students" in html
+    assert "Companies for Remote Sensing and GIS" in html
     assert "Sambus Geospatial" in html and "Advertised SIWES/IT places (Nov 2026)" in html
     assert "Hidden Co" not in html                      # no evidence, not shown
     assert "Not confirmed: call or email before you go" in html
@@ -295,7 +295,7 @@ def test_any_course_listings_are_kept_apart_from_the_field(client):
     html = _get(client, field="GIS").text
     field_part, rest = html.split("more open to any course")
     assert "Apple-style programme" not in field_part and "Apple-style programme" in rest
-    assert "Big Co" not in html.split("Companies that take")[1]
+    assert "Big Co" not in html.split("Companies for")[1]
 
 
 def test_rejected_listing_found_again_does_not_come_back():
@@ -310,3 +310,155 @@ def test_rejected_listing_found_again_does_not_come_back():
     counts = run_pipeline(store, llm, {"t": lambda: [item]}, today=TODAY)
     assert counts.get("rejected") == 1 and store.placements[0].status == "rejected"
     assert store.companies == []
+
+
+# --- discovery: companies by field and state ------------------------------------
+def _ev(kind, url, page_date=None, seen_at=TODAY):
+    return Evidence(url=url, kind=kind, page_date=page_date, seen_at=seen_at)
+
+
+def test_tiers_order_and_labels():
+    profile = Company(name="Geo Firm", name_key="geo firm", fields=["Remote Sensing and GIS"], states=["Lagos"],
+                      evidence=[_ev("profile", "https://www.finelib.com/listing/geo-firm/1")])
+    took = _company("Old Host", "old host", states=["Oyo"], evidence_url="https://h/1")
+    hiring = _company("Hiring Co", "hiring", states=["Kano"], evidence_url="https://k/1")
+    cards = rank_companies([profile, took, hiring], [_placement("Hiring Co", "Kano")], "Lagos", TODAY,
+                           field="Remote Sensing and GIS")
+    assert [(k.company.name, k.tier) for k in cards] == [("Hiring Co", 1), ("Old Host", 2), ("Geo Firm", 3)]
+    assert cards[2].evidence_label.startswith("Does Remote Sensing and GIS work in Lagos (finelib.com, seen Nov 2026)")
+    assert "no record of them taking SIWES students" in cards[2].evidence_label
+
+
+def test_per_tier_limit_keeps_lower_tiers_visible():
+    many = [_company(f"Co {i}", f"co{i}", evidence_url=f"https://c/{i}") for i in range(20)]
+    profile = Company(name="Geo Firm", name_key="geo firm", fields=["Remote Sensing and GIS"],
+                      evidence=[_ev("profile", "https://geofirm.ng/")])
+    cards = rank_companies(many + [profile], [], None, TODAY, per_tier=15)
+    assert len([k for k in cards if k.tier == 2]) == 15 and cards[-1].company.name == "Geo Firm"
+
+
+def test_report_counts_for_five_years_but_only_if_the_firm_still_shows_up():
+    report = _ev("report", "https://www.scribd.com/document/1/siwes-report", page_date=date(2022, 3, 1))
+    lone = Company(name="Gone Ltd", name_key="gone", fields=["Remote Sensing and GIS"], evidence=[report])
+    alive = lone.model_copy(update={"name": "Alive Ltd", "name_key": "alive", "website": "https://alive.ng"})
+    [card] = rank_companies([lone, alive], [], None, TODAY)
+    assert card.company.name == "Alive Ltd" and card.tier == 2
+    assert card.evidence_label == "A 2022 student SIWES/IT report names this company"
+
+
+def test_seeing_a_page_again_keeps_it_fresh():
+    store = MemoryStore()
+    old = Company(name="Geo Firm", name_key="geo firm", states=["Lagos"], fields=["Remote Sensing and GIS"],
+                  evidence=[_ev("profile", "https://geofirm.ng/", seen_at=date(2025, 6, 1))])
+    store.upsert_company(old)
+    store.upsert_company(old.model_copy(update={"evidence": [_ev("profile", "https://geofirm.ng/")]}))
+    [c] = store.companies
+    assert len(c.evidence) == 1 and c.evidence[0].seen_at == TODAY
+
+
+FIRM_SITE = RawItem(source="web", url="https://www.geofirmng.com/about", title="Geo Firm Nigeria",
+                    text="Geo Firm Nigeria Ltd provides GIS mapping, remote sensing and land surveying in Ikeja, Lagos.",
+                    purpose="discovery")
+
+
+@pytest.mark.parametrize("page_type,kind", [("business_directory", "profile"), ("company_profile", "profile"),
+                                            ("siwes_report", "report"), ("company_list", "directory")])
+def test_page_types_map_to_evidence(page_type, kind):
+    llm = FakeLLM([{"id": 0, "pageType": page_type, "companies": [
+        {"name": "Geo Firm Nigeria Ltd", "location": "Ikeja", "fields": ["Remote Sensing and GIS"],
+         "quote": "Geo Firm Nigeria Ltd provides GIS mapping, remote sensing"}]}])
+    [c] = extract([FIRM_SITE], llm, today=TODAY).companies
+    assert c.evidence[0].kind == kind and c.states == ["Lagos"] and c.fields == ["Remote Sensing and GIS"]
+    # On the company's own site, its website is that site.
+    assert c.website == ("https://geofirmng.com" if page_type == "company_profile" else None)
+
+
+def test_discovery_pages_skip_the_keyword_filter_and_seen_urls():
+    from collectors.runner import run_pipeline
+
+    store = MemoryStore()
+    store.mark_seen(["https://www.geofirmng.com/about"])          # seen before, for another field
+    llm = FakeLLM([{"id": 0, "pageType": "company_profile", "companies": [
+        {"name": "Geo Firm Nigeria Ltd", "location": "Ikeja", "fields": ["Remote Sensing and GIS"],
+         "quote": "Geo Firm Nigeria Ltd provides GIS mapping, remote sensing"}]}])
+    advert = RawItem(source="web", url="https://ads.example/1", title="Buy phones", text="cheap phones")
+    counts = run_pipeline(store, llm, {"d": lambda: [FIRM_SITE], "s": lambda: [advert]}, today=TODAY)
+    assert counts["prefiltered"] == 1 and store.companies[0].name == "Geo Firm Nigeria Ltd"
+
+
+def test_discovery_search_has_no_date_limit():
+    sent = []
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"organic": []}
+
+    def post(url, **kw):
+        sent.append(kw["json"])
+        return Resp()
+
+    search = WebSearch(serper_key="k", getter=post)
+    search.search("q")
+    search.search("q", recent=False)
+    assert sent[0]["tbs"] == "qdr:m3" and "tbs" not in sent[1]
+
+
+def test_searching_a_course_and_state_queues_discovery(client):
+    store = client.app.state.store
+    _get(client, field="GIS", state="Lagos")
+    _get(client, field="GIS", state="Lagos")     # same visitor again: counted once
+    _get(client, field="GIS")                    # no state: nothing to discover
+    assert store.pairs[("Remote Sensing and GIS", "Lagos")]["request_count"] == 1
+    assert store.pairs_due(2) == [("Remote Sensing and GIS", "Lagos")]
+    store.mark_pair_discovered("Remote Sensing and GIS", "Lagos")
+    assert store.pairs_due(2) == []
+
+
+def test_discovery_queries_and_grants():
+    from collectors.queries import discovery_queries
+
+    queries = discovery_queries("Remote Sensing and GIS", "Lagos")
+    assert len(queries) == 3 and all("Lagos" in q for q in queries)
+    assert "GRANT SELECT, INSERT, UPDATE ON requested_pairs TO siwes_web" in \
+        (ROOT / "db" / "web_role.sql").read_text("utf-8")
+
+
+def test_report_named_only_in_a_blocked_pages_address_is_kept():
+    item = RawItem(source="web", purpose="discovery", title="", text="",
+                   url="https://www.researchgate.net/publication/1_SIWES_REPORT_HELD_AT_THE_NIGERIAN_INSTITUTE_OF_OCEANOGRAPHY_AND_MARINE_RESEARCH")
+    llm = FakeLLM([{"id": 0, "pageType": "siwes_report", "companies": [
+        {"name": "Nigerian Institute of Oceanography and Marine Research",
+         "quote": "SIWES REPORT HELD AT THE NIGERIAN INSTITUTE OF OCEANOGRAPHY AND MARINE RESEARCH"}]}])
+    [c] = extract([item], llm, today=TODAY).companies
+    assert c.evidence[0].kind == "report"
+
+
+
+def test_rotation_covers_every_course_without_searches():
+    from collectors.queries import rotation_pairs
+    from core.fields import canonical_names
+
+    store = MemoryStore()
+    states = ["Lagos", "FCT"]
+    done = set()
+    for _ in range(100):   # 2 pairs a run, as configured
+        batch = rotation_pairs(states, store.recently_discovered(), 2)
+        for pair in batch:
+            store.mark_pair_discovered(*pair)
+        done.update(batch)
+        if not batch:
+            break
+    assert done == {(f, s) for s in states for f in canonical_names()}   # every course, both states
+    assert store.pairs_due(5) == []          # rotation rows never jump ahead of student searches
+    store.request_pair("Geology", "Kano")
+    assert store.pairs_due(5) == [("Geology", "Kano")]
+
+
+def test_rotation_starts_with_the_first_state():
+    from collectors.queries import rotation_pairs
+
+    first = rotation_pairs(["Lagos", "FCT"], set(), 3)
+    assert [s for _, s in first] == ["Lagos"] * 3
