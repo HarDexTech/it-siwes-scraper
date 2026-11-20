@@ -21,6 +21,10 @@ companies:
   seeds_per_run: 1             # companies from config/companies.yaml searched each run (1 query each)
   discovery_pairs_per_run: 2   # course + state pairs looked into for companies each run (3 queries each)
   discovery_days: 90           # each pair at most this often
+  candidate_checks_per_run: 10 # AI-suggested companies checked by web search (1 search each), searched pairs only
+  # Gemini with Google Search grounding suggests them, with source pages (free tier, ~1 call a run).
+  # A firm whose own site is among the sources is checked there, without a search.
+  grounded_model: gemini-2.5-flash
   # With no student searches waiting, discovery goes through every course for these states, in order.
   rotation_states: [Lagos, FCT, Rivers, Oyo, Ogun, Kaduna, Enugu, Kano]
 # Checked 2026-11-19: public preview works and the channel posted recently.

@@ -190,6 +190,11 @@ def _named_fields(page: str) -> set[str]:
     }
 
 
+def state_places(state: str) -> list[str]:
+    """Normalized names that place something in ``state``: the state itself and its cities."""
+    return sorted({p for p, s in _PLACES.items() if s == state} | ({"abuja"} if state == "FCT" else {state.lower()}))
+
+
 def _in_nigeria(page: str) -> bool:
     """The (normalized) page names Nigeria, a Nigerian state, or a Nigerian city."""
     words = f" {page} "

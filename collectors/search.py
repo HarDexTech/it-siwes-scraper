@@ -84,24 +84,38 @@ class WebSearch:
         self._getter = getter
         self._ddgs_factory = ddgs_factory
         self._redirect_getter = redirect_getter
+        self._serper_failures = 0   # consecutive queries where Serper failed even after a retry
         self.queries_used = 0
 
     def search(self, query: str, *, recent: bool = True) -> list[RawItem]:
         """``recent`` limits results to the last few months: right for adverts, wrong for
         company sites, business directories and old SIWES reports."""
         self.queries_used += 1
-        items: list[RawItem] = []
+        items: list[RawItem] | None = None
         if self._serper_key:
-            try:
-                items = self._serper(query, recent)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("serper failed (%s); using ddgs for the rest of the run", exc)
-                self._serper_key = None
-        if not self._serper_key:
+            for attempt in (1, 2):   # one retry: a dropped connection is not "Serper is down"
+                try:
+                    items = self._serper(query, recent)
+                    self._serper_failures = 0
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    status = getattr(getattr(exc, "response", None), "status_code", None)
+                    if status in (400, 401, 402, 403, 429):   # bad key, out of credit, throttled
+                        logger.warning("serper refused (%s); using ddgs for the rest of the run", status)
+                        self._serper_key = None
+                        break
+                    logger.warning("serper attempt %d failed (%s)", attempt, exc)
+            else:
+                self._serper_failures += 1
+                if self._serper_failures >= 2:
+                    logger.warning("serper failed twice in a row; using ddgs for the rest of the run")
+                    self._serper_key = None
+        if items is None:
             try:
                 items = self._ddgs(query, recent)
             except Exception:
                 logger.warning("ddgs failed for %r", query, exc_info=True)
+                items = []
         return [it for it in map(self._resolved, items) if it]
 
     def _resolved(self, item: RawItem) -> RawItem | None:

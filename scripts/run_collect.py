@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import logging
+import os
 from datetime import datetime, timezone
 
 from _common import database_url, setup_logging, sources_config
@@ -23,11 +24,35 @@ from collectors.runner import run_pipeline
 from collectors.search import WebSearch
 from collectors.sites import fetch_text
 from collectors.telegram import telegram_items
+from collectors.candidates import candidate_companies
 from core.companies import load_seeds
-from core.db import MemoryStore, PgStore
+from core.db import MemoryStore, PgStore, lagos_today
 from core.llm_client import LLMClient, MockLLMClient
 
 logger = logging.getLogger("run_collect")
+
+
+def suggest_and_check(store, llm, search, pairs, max_checks: int, grounded_model: str | None
+                      ) -> dict[str, dict[str, int]]:
+    """AI-suggested companies for student-searched pairs, kept only when a web search verifies them."""
+    results: dict[str, dict[str, int]] = {}
+    for field, state in pairs:
+        if max_checks <= 0:
+            break
+        known = [c.name for c in store.companies_for(field)]
+        try:
+            found, stats = candidate_companies(llm, search, field, state, known=known, max_checks=max_checks,
+                                               today=lagos_today(), fetch=fetch_text, grounded_model=grounded_model,
+                                               api_key=os.environ.get("GEMINI_API_KEY"))
+        except Exception:  # one bad pair must not fail the run
+            logger.exception("candidate companies failed for %s in %s", field, state)
+            continue
+        for company in found:
+            store.upsert_company(company)
+        max_checks -= stats["checked"]
+        results[f"{field} in {state}"] = stats
+        logger.info("candidates for %s in %s: %s", field, state, stats)
+    return results
 
 
 def main() -> int:
@@ -66,6 +91,7 @@ def main() -> int:
     # every course for the big states, each pair at most every discovery_days.
     comp = cfg["companies"]
     pairs = store.pairs_due(comp["discovery_pairs_per_run"], comp["discovery_days"])
+    searched_pairs = list(pairs)   # AI-suggested companies only for these: each check costs a search
     if len(pairs) < comp["discovery_pairs_per_run"]:
         recent = store.recently_discovered(comp["discovery_days"]) | set(pairs)
         pairs += rotation_pairs(comp["rotation_states"], recent, comp["discovery_pairs_per_run"] - len(pairs))
@@ -99,12 +125,17 @@ def main() -> int:
             max_llm_calls=cfg["llm"]["max_calls_per_run"],
             batch_size=cfg["llm"]["batch_size"],
         )
+        if not args.dry_run:
+            counts["candidates"] = suggest_and_check(store, llm, search, searched_pairs,
+                                                     comp["candidate_checks_per_run"], comp.get("grounded_model"))
         counts["search_queries"] = search.queries_used
         store.mark_requested_collected(served_requests)
         store.mark_checked([s.id for s in seeds])
+        retry = {k for k, v in counts.get("candidates", {}).items() if v.get("grounding_failed")}
         if "discovery" not in counts["errors"]:
             for pair in pairs:
-                store.mark_pair_discovered(*pair)
+                if " in ".join(pair) not in retry:   # grounding was down: try this pair again next run
+                    store.mark_pair_discovered(*pair)
         counts["discovery_pairs"] = [" in ".join(p) for p in pairs]
         status = "failed" if counts["errors"] and counts["collected"] == 0 else "ok"
         store.finish_run(run_id, status, counts, "; ".join(f"{k}: {v}" for k, v in counts["errors"].items()) or None)
